@@ -22,6 +22,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rcpp_knn_basins_escape
+Rcpp::List rcpp_knn_basins_escape(const Rcpp::List& adjacency, const Rcpp::NumericVector& field, const Rcpp::IntegerVector& extrema);
+RcppExport SEXP _gflow_rcpp_knn_basins_escape(SEXP adjacencySEXP, SEXP fieldSEXP, SEXP extremaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type adjacency(adjacencySEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type field(fieldSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type extrema(extremaSEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_knn_basins_escape(adjacency, field, extrema));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rcpp_local_pca_chart
 List rcpp_local_pca_chart(const NumericMatrix& X_support, const NumericVector& center, const int chart_dim, const std::string& center_mode, const std::string& dim_rule, const double eigen_tolerance, Nullable<NumericVector> weights, const bool rebase_to_anchor, const bool orient_basis);
 RcppExport SEXP _gflow_rcpp_local_pca_chart(SEXP X_supportSEXP, SEXP centerSEXP, SEXP chart_dimSEXP, SEXP center_modeSEXP, SEXP dim_ruleSEXP, SEXP eigen_toleranceSEXP, SEXP weightsSEXP, SEXP rebase_to_anchorSEXP, SEXP orient_basisSEXP) {

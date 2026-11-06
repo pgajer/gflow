@@ -26,10 +26,13 @@ if (!isTRUE(environment$numerical_checks_passed)) {
 }
 write.csv(environment$stage_table, file.path(out, "stage-counts.csv"), row.names = FALSE)
 write.csv(environment$sensitivity_table, file.path(out, "sensitivity.csv"), row.names = FALSE)
+write.csv(environment$terrain_mode_table, file.path(out, "terrain-mode-comparison.csv"), row.names = FALSE)
+write.csv(environment$terrain_interior_table, file.path(out, "terrain-interior-comparison.csv"), row.names = FALSE)
 write.csv(environment$verification, file.path(out, "numerical-verification.csv"), row.names = FALSE)
 writeLines(capture.output(sessionInfo()), file.path(out, "session-info.txt"))
 saveRDS(list(one = environment$one, noisy = environment$noisy,
              two = environment$two, terrain = environment$terrain,
+             terrain.asymmetric = environment$terrain_asymmetric,
              density = environment$density_control,
              sensitivity = environment$sensitivity_fits),
         file.path(out, "reviewed-results.rds"))

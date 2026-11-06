@@ -49,7 +49,8 @@ feature can pass the persistence threshold and still fail the size threshold.
 
 ## What the function returns
 
-Each observation selects its `k` nearest other observations. A connection is
+By default (`symmetrize = TRUE`), each observation selects its `k` nearest
+other observations. A connection is
 included if either endpoint selects the other, giving an undirected,
 union-symmetrized kNN neighborhood. L2 uses Euclidean distance; Linfty uses
 the largest absolute coordinate difference. Connected observations with exactly
@@ -75,6 +76,74 @@ do not identify the same regions. Size filtering does not reassign excluded
 observations. Merged labels are unions of initial basins, and these unions
 can be disconnected when an intervening basin remains retained. They should
 not be interpreted as physical drainage catchments.
+
+## Choosing the neighborhood rule
+
+Use `symmetrize = FALSE` to test each row against **exactly its own `k`
+nearest other rows**. Incoming selections do not enlarge the test. A maximum
+has no strictly higher selected neighbor; a minimum has no strictly lower
+selected neighbor. The query point itself is implicit in this comparison.
+
+```{r directed-neighborhood-example}
+toy_X <- matrix(c(0, 1, 3.5))
+toy_y <- c(0, 5, 10)
+toy_union <- knn.basins(toy_X, toy_y, k = 1)
+toy_directed <- knn.basins(toy_X, toy_y, k = 1, symmetrize = FALSE)
+knitr::kable(data.frame(
+    row = 1:3, position = toy_X[, 1], outcome = toy_y,
+    selected.neighbor = toy_directed$neighborhood$knn.index[, 1],
+    union.maximum = 1:3 %in% toy_union$max$extrema$row,
+    directed.maximum = 1:3 %in% toy_directed$max$extrema$row
+), row.names = FALSE)
+stopifnot(identical(toy_union$max$extrema$row, 3L),
+          identical(toy_directed$max$extrema$row, c(3L, 2L)),
+          identical(toy_directed$max$initial.labels, c(2L, 2L, 3L)))
+```
+
+Row 2 selects row 1, whose outcome is lower, so row 2 passes the directed
+maximum test. Row 3 selects row 2. Symmetrization adds that incoming connection
+to row 2's neighborhood, disqualifying it as a maximum in the default mode.
+
+Directed basin assignment uses the same `CLOSEST` principle as gflow's
+graph-based trajectory flow: take the **shortest outgoing edge that strictly
+improves the outcome**, then repeat. Distance ties use the smaller target row.
+The endpoint identifies the initial basin. A much larger outcome gain cannot
+override a nearer improving neighbor. This is a local step rule, not a
+minimum-total-length path optimization. It does not impose an absolute
+edge-length cutoff: if the only improving selected neighbor is far away,
+the step still uses that neighbor. Each direction's `next.vertex` records
+these successors, with `NA` at terminal extrema.
+
+Equal-valued rows are not contracted in directed mode. A row with no strictly
+improving selected neighbor stops even if an equal neighbor can move farther
+uphill or downhill. This preserves the exact per-row test, but flat regions
+can contain many terminal extrema.
+
+The directed mode therefore also changes the meaning of `persistence` to
+**directed escape prominence**. Starting at a maximum, consider paths that
+follow outgoing kNN connections to a strictly higher terminal maximum. The
+escape level is the highest possible minimum outcome along such a path.
+Prominence is the starting height minus that level. Minima reverse the
+inequalities. These escape paths can descend, ascend, or cross equal values;
+they are different from the strictly improving basin trajectories.
+
+There is no finite escape level when no strictly more extreme terminal row
+is reachable. Both maxima in the small example have infinite directed
+prominence: row 2 cannot reach row 3 through its outgoing connections, even
+though the underlying undirected graph is connected. Equal-height terminal
+extrema do not eliminate one another. Several essential extrema can thus
+exist in one weak component, and infinity does not establish statistical
+importance. This convention is not ordinary connected-component persistence.
+
+The filtering sequence remains the same: extrema with prominence strictly
+below `min.persistence` merge along their parent links; then basins smaller
+than `min.basin.size` receive `NA` labels. Initial trajectories are preserved,
+and merging does not create a new shortest-edge ascent/descent path.
+
+The synthetic figures and the first terrain figures below use the default
+symmetric mode. A separate terrain comparison holds the numeric settings
+fixed and displays both modes side by side; the neighborhood-scale sensitivity
+analysis then returns to symmetric mode.
 
 ```{r plotting-helpers, include=FALSE}
 ink <- "#253943"
@@ -134,13 +203,24 @@ plot_ribbons <- function(fit, x, direction) {
     box(col = "#cbd1d3")
 }
 basin_map <- function(X, fit, direction, stage, title, contour_data = NULL,
-                      reference = fit, raster_dim = NULL, annotate = TRUE) {
-    theme_par(mar = c(3.2, 3.2, 2.1, .7), mgp = c(1.9, .6, 0), cex.axis = .8, cex.lab = .86)
+                      reference = fit, raster_dim = NULL, annotate = TRUE,
+                      color_key = NULL, subtitle = NULL, padding = 0) {
+    theme_par(mar = c(3.2, 3.2, if (is.null(subtitle)) 2.1 else 3.1, .7),
+              mgp = c(1.9, .6, 0), cex.axis = .8, cex.lab = .86)
     labels <- fit[[direction]][[stage]]
-    cols <- colors_for(labels, fit, direction, X, reference)
+    cols <- if (is.null(color_key)) colors_for(labels, fit, direction, X, reference) else {
+        color <- unname(color_key[as.character(labels)])
+        color[is.na(labels)] <- excluded
+        stopifnot(!anyNA(color))
+        color
+    }
+    xlim <- range(X[, 1]); ylim <- range(X[, 2])
+    xlim <- xlim + c(-1, 1) * padding * diff(xlim)
+    ylim <- ylim + c(-1, 1) * padding * diff(ylim)
     plot(X, type = "n", asp = 1, xlab = if (is.null(raster_dim)) "Coordinate 1" else "Row-axis offset (m)",
          ylab = if (is.null(raster_dim)) "Coordinate 2" else "Column-axis offset (m)",
-         main = title, cex.main = .93, xaxs = "i", yaxs = "i")
+         main = title, cex.main = .93, xaxs = "i", yaxs = "i", xlim = xlim, ylim = ylim)
+    if (!is.null(subtitle)) mtext(subtitle, side = 3, line = .2, cex = .78, col = muted)
     if (is.null(raster_dim)) {
         points(X, pch = 16, col = cols, cex = .42)
     } else {
@@ -454,7 +534,8 @@ Xv <- cbind(row.offset = 10 * (grid_index$row - 1),
 yv <- as.vector(terrain_grid)
 stopifnot(identical(yv, as.vector(terrain_grid[as.matrix(grid_index)])))
 terrain <- knn.basins(Xv, yv, k = 50, metric = "L2",
-                      min.persistence = 5, min.basin.size = 100)
+                      min.persistence = 5, min.basin.size = 100,
+                      symmetrize = TRUE)
 ```
 
 ```{r terrain-details, echo=FALSE}
@@ -518,15 +599,138 @@ essential minimum has infinite persistence because no older minimum exists
 in its connected component; infinity is not a measure of statistical certainty.
 
 Regular grids have equal-distance neighbors, and the recorded heights have
-exact plateaus. `knn.basins()` breaks distance ties by row index and contracts
+exact plateaus. Symmetric mode breaks distance ties by row index and contracts
 connected equal-height plateaus. We preserve the stated matrix order and do
 not add jitter. Row permutations can change a tied kNN cutoff. L2/Linfty
 comparisons therefore reflect both the metric and its associated tie pattern.
 
+### Symmetric and asymmetric modes at fixed settings
+
+We now compare the two modes on the **same 5,307 locations and supplied
+heights**, using **L2, `k = 50`, `min.persistence = 5`, and
+`min.basin.size = 100`** throughout. Only `symmetrize` changes in the call.
+That switch selects a complete convention: union neighborhoods, connected
+plateaus, and level-set persistence in symmetric mode; outgoing neighborhoods,
+individual terminal rows, and directed escape prominence in asymmetric mode.
+The common threshold is five dataset height units, but the two prominence
+definitions need not give the same value. This comparison does not isolate
+edge symmetrization from the change in plateau and prominence rules.
+
+```{r terrain-mode-fit, cache=TRUE, dependson="terrain-data"}
+terrain_asymmetric <- knn.basins(
+    Xv, yv, k = 50, metric = "L2",
+    min.persistence = 5, min.basin.size = 100,
+    symmetrize = FALSE
+)
+```
+
+```{r terrain-mode-summary, include=FALSE}
+terrain_modes <- list(Symmetric = terrain, Asymmetric = terrain_asymmetric)
+terrain_mode_table <- do.call(rbind, lapply(c("max", "min"), function(d) {
+    do.call(rbind, lapply(names(terrain_modes), function(mode) {
+        z <- terrain_modes[[mode]][[d]]
+        data.frame(mode = mode, direction = d, initial = nrow(z$extrema),
+                   essential = sum(z$extrema$essential),
+                   after.merging = length(unique(z$persistence.labels)),
+                   retained = length(z$basins), unassigned = sum(is.na(z$labels)),
+                   unassigned.percent = 100 * mean(is.na(z$labels)))
+    }))
+}))
+# A representative row has the same color in both modes within a direction.
+# Different row identifiers remain distinct even when their heights are equal.
+terrain_mode_colors <- lapply(c("max", "min"), function(d) {
+    rows <- sort(unique(unlist(lapply(terrain_modes, function(fit)
+        fit[[d]]$extrema$row[fit[[d]]$extrema$retained]))))
+    stopifnot(length(rows) <= length(basin_palette))
+    original_rows <- terrain[[d]]$extrema$row
+    original_colors <- setNames(rep(basin_palette, length.out = length(original_rows)), original_rows)
+    key <- original_colors[as.character(rows)]
+    names(key) <- as.character(rows)
+    missing <- is.na(key)
+    key[missing] <- setdiff(basin_palette, key[!missing])[seq_len(sum(missing))]
+    key
+})
+names(terrain_mode_colors) <- c("max", "min")
+terrain_interior_table <- do.call(rbind, lapply(names(terrain_modes), function(mode) {
+    tab <- terrain_modes[[mode]]$min$extrema
+    z <- tab[match(interior_v$row, tab$row), ]
+    stopifnot(nrow(z) == 1L, !is.na(z$row), z$retained)
+    data.frame(mode = mode, row = z$row, height = z$value,
+               merge.or.escape.level = z$merge.level, prominence = z$persistence,
+               assigned.rows = z$merged.size)
+}))
+asym_min <- terrain_asymmetric$min$extrema
+asym_min_summary <- terrain_mode_table[terrain_mode_table$mode == "Asymmetric" &
+                                      terrain_mode_table$direction == "min", ]
+```
+
+```{r terrain-mode-comparison, echo=FALSE, fig.width=9, fig.height=8.7, fig.cap="Final volcano basins with L2, k = 50, prominence threshold 5 height units, and minimum assigned size 100 in both modes. Columns compare symmetric and asymmetric neighborhoods; rows compare maxima and minima on identical coordinate scales. Within each direction, the same representative row has the same color across modes, without implying identical basin membership. Gray cells are unassigned after size filtering. White triangles mark retained extrema; nearby boundary markers can overlap. The legend identifies minimum-basin representative rows.", fig.alt="Four panels compare final symmetric and asymmetric volcano basins. Both maximum panels contain one basin. The minimum panels contain five versus nine basins; the asymmetric panel also has 199 gray unassigned observations."}
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op))
+    layout(matrix(c(1, 2, 3, 4, 5, 5), nrow = 3, byrow = TRUE), heights = c(1, 1, .24))
+    for (d in c("max", "min")) for (mode in names(terrain_modes)) {
+        fit <- terrain_modes[[mode]]
+        z <- fit[[d]]
+        basin_map(Xv, fit, d, "labels",
+                  paste(if (d == "max") "Maxima:" else "Minima:", tolower(mode)),
+                  contours_v, raster_dim = dim(terrain_grid),
+                  color_key = terrain_mode_colors[[d]], padding = .025,
+                  subtitle = sprintf("%d retained; %d unassigned", length(z$basins), sum(is.na(z$labels))))
+    }
+    theme_par(mar = c(0, 0, 0, 0))
+    plot.new()
+    legend("center", legend = c(names(terrain_mode_colors$min), "Unassigned"),
+           fill = c(unname(terrain_mode_colors$min), excluded), border = NA,
+           ncol = 5, bty = "n", cex = .83, title = "Minimum-basin representative rows")
+})
+```
+
+```{r terrain-mode-table, echo=FALSE}
+knitr::kable(terrain_mode_table[, c("mode", "direction", "initial", "after.merging",
+                                   "retained", "unassigned", "unassigned.percent")],
+              col.names = c("Mode", "Direction", "Initial", "After merging", "Final",
+                            "Unassigned", "Unassigned (%)"), digits = 2, row.names = FALSE,
+              caption = "Fixed-setting comparison. Initial and merged assignments cover all 5,307 observations; only the size filter creates unassigned rows.")
+```
+
+Both modes finish with the same single maximum basin, containing all 5,307
+observations. The minimum partition changes: symmetric mode retains
+`r sum(terrain$min$extrema$retained)` basins and assigns every observation;
+asymmetric mode retains `r asym_min_summary$retained` basins and leaves
+`r asym_min_summary$unassigned` observations
+(`r sprintf("%.2f", asym_min_summary$unassigned.percent)`%) unassigned.
+In asymmetric mode, `r asym_min_summary$after.merging` minimum basins survive
+the prominence threshold, and the separate size filter removes
+`r asym_min_summary$after.merging - asym_min_summary$retained` of them.
+
+Part of the larger initial count comes from the treatment of equal heights.
+The lowest recorded height, `r min(yv)`, occurs at `r sum(yv == min(yv))`
+locations. Symmetric mode combines these connected locations into one
+essential minimum plateau. Asymmetric mode keeps all
+`r sum(asym_min$essential)` as separate essential terminal minima because
+no strictly lower outcome exists. Most of those terminal rows support fewer
+than 100 assigned observations after merging and fail the size filter.
+These counts describe the two definitions; they do not rank their scientific
+validity or establish additional physical depressions.
+
+The interior depression provides a useful comparison of membership rather
+than counts alone. Its representative row, height, and merge/escape level
+agree across modes, giving prominence 16 in both. Its assigned support
+increases from `r terrain_interior_table$assigned.rows[1]` to
+`r terrain_interior_table$assigned.rows[2]` observations. Equal prominence
+therefore does not imply an identical basin boundary.
+
+```{r terrain-interior-comparison, echo=FALSE}
+knitr::kable(terrain_interior_table, row.names = FALSE,
+              col.names = c("Mode", "Row", "Height", "Merge/escape level", "Prominence", "Assigned rows"),
+              caption = "The same interior minimum under both neighborhood conventions; heights and prominence use dataset height units.")
+```
+
 ## Sensitivity to neighborhood scale and distance
 
-We keep outcomes and filtering thresholds fixed within each example and
-compare `k = 25, 50, 100`. The two-dimensional and terrain examples use both
+This section uses symmetric mode throughout. We keep outcomes and filtering
+thresholds fixed within each example and compare `k = 25, 50, 100`. The
+two-dimensional and terrain examples use both
 metrics. In one dimension the metrics are mathematically identical; the
 numerical check below compares them at `k = 25`.
 
@@ -623,7 +827,11 @@ results. They verify:
 * maximum/minimum sign reversal, one-dimensional metric equality, and the
   alignment between terrain cells, coordinates, and outcome values;
 * recovery of the 1D function's stationary extrema using roots of its analytic
-  derivative, separately from the discrete graph construction.
+  derivative, separately from the discrete graph construction;
+* identical inputs and numeric settings for the two terrain modes, exact
+  outgoing-neighbor extrema and shortest improving steps for every asymmetric
+  terrain row, and directed escape levels and parent targets using an
+  independent threshold-reachability search for all asymmetric terrain extrema.
 
 ```{r numerical-verification, include=FALSE}
 verification <- data.frame(check = character(), cases = integer(), passed = logical())
@@ -631,7 +839,8 @@ record_check <- function(name, cases, condition) {
     stopifnot(isTRUE(condition))
     verification <<- rbind(verification, data.frame(check = name, cases = cases, passed = TRUE))
 }
-all_fits <- c(list(one = one, noisy = noisy, two = two, terrain = terrain, density = density_control), sensitivity_fits)
+all_fits <- c(list(one = one, noisy = noisy, two = two, terrain = terrain,
+                  terrain_asymmetric = terrain_asymmetric, density = density_control), sensitivity_fits)
 for (fit in all_fits) for (d in c("max", "min")) {
     result <- fit[[d]]; tab <- result$extrema; n <- length(fit$y)
     stopifnot(sum(tab$initial.size) == n, sum(tab$merged.size) == n,
@@ -745,6 +954,104 @@ record_check("Known narrow synthetic peaks survive persistence but fail size", 2
               narrow2$status == "filtered_size" && narrow2$persistence > .3)
 record_check("Interior terrain depression has height 148 and merge level 164", 1L,
               interior_v$value == 148 && interior_v$merge.level == 164 && interior_v$persistence == 16)
+
+fixed_parameters <- c("k", "metric", "direction", "min.persistence", "min.basin.size",
+                       "scaling", "projection", "smoothing", "distance.ties")
+record_check("Terrain modes share input values, settings, and selected kNN", length(yv),
+              identical(terrain$y, terrain_asymmetric$y) &&
+              identical(terrain$parameters[fixed_parameters], terrain_asymmetric$parameters[fixed_parameters]) &&
+              identical(terrain$neighborhood$knn.index, terrain_asymmetric$neighborhood$knn.index) &&
+              identical(terrain$neighborhood$knn.distance, terrain_asymmetric$neighborhood$knn.distance))
+for (d in c("max", "min")) {
+    field <- if (d == "max") yv else -yv
+    z <- terrain_asymmetric[[d]]
+    terminal <- rep(FALSE, length(yv))
+    for (i in seq_along(yv)) {
+        neighbors <- terrain_asymmetric$neighborhood$adj.list[[i]]
+        distance <- terrain_asymmetric$neighborhood$edge.length.list[[i]]
+        stopifnot(identical(neighbors, sort(terrain$neighborhood$knn.index[i, ])))
+        improve <- which(field[neighbors] > field[i])
+        terminal[i] <- length(improve) == 0L
+        expected <- if (terminal[i]) NA_integer_ else
+            neighbors[improve[order(distance[improve], neighbors[improve])[1]]]
+        stopifnot(identical(z$next.vertex[i], expected))
+        endpoint <- i
+        while (!is.na(z$next.vertex[endpoint])) endpoint <- z$next.vertex[endpoint]
+        stopifnot(z$initial.labels[i] == endpoint)
+    }
+    stopifnot(setequal(z$extrema$row, which(terminal)))
+}
+record_check("Directed terrain per-row extrema and shortest improving paths", 2L * length(yv), TRUE)
+
+# Independent directed oracle: search observed thresholds using outgoing BFS.
+# Strictly better terminal rows are targets; equal-height terminals are not.
+# No widest-path backend is used, and targets are resolved at the escape level.
+oracle_directed_escape <- function(graph, field, peaks, peak) {
+    target <- rep(FALSE, length(field))
+    target[peaks[field[peaks] > field[peak]]] <- TRUE
+    absent <- list(level = NA_real_, parent = NA_integer_)
+    if (!any(target)) return(absent)
+    reachable_targets <- function(level) {
+        seen <- rep(FALSE, length(field)); seen[peak] <- TRUE
+        queue <- integer(length(field)); queue[1] <- peak; head <- 1L; tail <- 1L
+        while (head <= tail) {
+            neighbors <- graph$adj.list[[queue[head]]]; head <- head + 1L
+            add <- neighbors[field[neighbors] >= level & !seen[neighbors]]
+            if (length(add)) {
+                seen[add] <- TRUE
+                queue[tail + seq_along(add)] <- add
+                tail <- tail + length(add)
+            }
+        }
+        which(seen & target)
+    }
+    levels <- sort(unique(field[field <= field[peak]]), decreasing = TRUE)
+    if (!length(reachable_targets(tail(levels, 1)))) return(absent)
+    lo <- 1L; hi <- length(levels)
+    while (lo < hi) {
+        mid <- (lo + hi) %/% 2L
+        if (length(reachable_targets(levels[mid]))) hi <- mid else lo <- mid + 1L
+    }
+    targets <- reachable_targets(levels[lo])
+    list(level = levels[lo], parent = targets[order(-field[targets], targets)][1])
+}
+directed_oracle_count <- 0L
+for (d in c("max", "min")) {
+    field <- if (d == "max") yv else -yv
+    tab <- terrain_asymmetric[[d]]$extrema
+    for (i in seq_len(nrow(tab))) {
+        oracle <- oracle_directed_escape(terrain_asymmetric$neighborhood, field, tab$row, tab$row[i])
+        level <- if (d == "max") tab$merge.level[i] else -tab$merge.level[i]
+        persistence <- if (is.na(oracle$level)) Inf else field[tab$row[i]] - oracle$level
+        stopifnot(isTRUE(all.equal(level, oracle$level)),
+                  identical(tab$parent.row[i], oracle$parent),
+                  isTRUE(all.equal(tab$persistence[i], persistence)))
+        directed_oracle_count <- directed_oracle_count + 1L
+    }
+}
+record_check("Independent directed terrain escape levels and parents", directed_oracle_count, TRUE)
+
+expected_mode_counts <- rbind(c(3, 1, 1, 0), c(145, 1, 1, 0),
+                              c(10, 5, 5, 0), c(188, 61, 9, 199))
+record_check("Fixed-setting terrain counts and interior support", 6L,
+              all(as.matrix(terrain_mode_table[, c("initial", "after.merging", "retained", "unassigned")]) == expected_mode_counts) &&
+              identical(terrain$max$labels, terrain_asymmetric$max$labels) &&
+              all(terrain_interior_table$height == 148) &&
+              all(terrain_interior_table$merge.or.escape.level == 164) &&
+              all(terrain_interior_table$prominence == 16) &&
+              identical(terrain_interior_table$assigned.rows, c(127L, 297L)))
+lowest_plateau <- terrain$min$extrema$plateau.rows[terrain$min$extrema$essential][[1]]
+record_check("Lowest terrain plateau versus separate essential rows", sum(yv == min(yv)),
+              setequal(lowest_plateau, which(yv == min(yv))) &&
+              setequal(asym_min$row[asym_min$essential], which(yv == min(yv))))
+for (d in c("max", "min")) {
+    key <- terrain_mode_colors[[d]]
+    stopifnot(!anyNA(key), !anyDuplicated(unname(key)))
+    for (fit in terrain_modes) stopifnot(all(as.character(fit[[d]]$extrema$row[fit[[d]]$extrema$retained]) %in% names(key)))
+    stopifnot(identical(unname(key[as.character(terrain[[d]]$labels)]),
+                        colors_for(terrain[[d]]$labels, terrain, d)))
+}
+record_check("Comparison color identities and baseline colors", sum(lengths(terrain_mode_colors)), TRUE)
 numerical_checks_passed <- TRUE
 ```
 

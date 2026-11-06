@@ -66,7 +66,8 @@ synthetic 1D and 2D fields and real terrain, with numerical and visual checks.
 all supplied columns, with no PCA, scaling, normalization, or outcome
 smoothing. Choose `metric = "L2"` or `"Linfty"`; feature units therefore
 matter. Each row selects `k` other rows, and an undirected connection is
-included if either row selects the other.
+included if either row selects the other by default (`symmetrize = TRUE`).
+Set `symmetrize = FALSE` for exactly each row's outgoing `k` neighbors.
 
 ```{r matrix-input-basins}
 X <- matrix(seq_len(9), ncol = 1)
@@ -85,8 +86,8 @@ at outcome level 1: its persistence is 2 outcome units. The threshold 2.1
 merges its basin into row 2's basin. `direction = "both"` computes minima
 as well; `"max"` and `"min"` select a single orientation.
 
-Connected equal-valued rows form one plateau. Initial basins follow the
-nearest improving boundary edge of each plateau. `initial.labels` records
+In the default symmetric mode, connected equal-valued rows form one plateau.
+Initial basins follow the nearest improving boundary edge of each plateau. `initial.labels` records
 these assignments; `persistence.labels` records assignments after merging.
 The separate size filter counts assigned rows at that stage and sets final
 `labels` to `NA` in undersized basins. It does not reassign those observations.
@@ -101,6 +102,23 @@ differs from the canonical merge-tree interface's finite component-range
 endpoint. `neighborhood$radius` reports each row's kth-neighbor distance;
 inspect it when sampling density varies. Exact neighbor search takes
 quadratic time in the row count, without storing a full distance matrix.
+
+With `symmetrize = FALSE`, rows are tested individually, without pooling
+equal-valued neighborhoods. Each row follows its shortest outgoing strictly
+improving edge, using the graph trajectory method's `CLOSEST` rule without
+an absolute edge-length cutoff. A row with no improving selected neighbor
+is terminal, and `next.vertex` records these initial successors. Equal-valued
+rows can therefore be separate extrema.
+
+This mode reports **directed escape prominence**: the smallest outcome drop
+from a maximum (or rise from a minimum) needed to reach a strictly more
+extreme terminal row along outgoing kNN paths. It is not ordinary level-set
+persistence. Equal-height extrema do not eliminate one another, and no
+reachable better terminal means infinite prominence. Multiple essential
+extrema can occur within a weak component. Prominence merging and the separate
+size filter still produce `persistence.labels` and final `labels`; they do
+not modify `next.vertex`. The [matrix-input vignette](knn-basins.html) shows
+a small example where symmetric and asymmetric neighborhoods disagree.
 
 ## A complete first analysis
 

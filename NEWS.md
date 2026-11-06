@@ -1,5 +1,14 @@
 # gflow 0.2.0 (unreleased)
 
+* `knn.basins()` now accepts `symmetrize = FALSE` for extrema tested against
+  exactly each row's outgoing k nearest neighbors. The default remains the
+  existing union-symmetrized method. Directed basins use shortest strictly
+  improving edges (`CLOSEST`), without contracting equal-valued rows. Directed
+  escape prominence measures the smallest outcome drop/rise needed to reach
+  a strictly more extreme terminal row along outgoing paths; it is distinct
+  from undirected level-set persistence. Initial successors are available in
+  `next.vertex`, and prominence merging still precedes the separate size filter.
+
 * Added the `knn-basins` vignette with synthetic 1D/2D examples and the
   Maunga Whau terrain data, including L2/Linfty and neighborhood-scale
   comparisons, sampling-density diagnostics, and independent numerical checks.

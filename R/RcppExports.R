@@ -5,6 +5,10 @@ rcpp_knn_basins_neighbors <- function(X, k, linfty) {
     .Call(`_gflow_rcpp_knn_basins_neighbors`, X, k, linfty)
 }
 
+rcpp_knn_basins_escape <- function(adjacency, field, extrema) {
+    .Call(`_gflow_rcpp_knn_basins_escape`, adjacency, field, extrema)
+}
+
 #' Local PCA chart
 #'
 #' Internal C++ backend for shared local-PCA chart construction.

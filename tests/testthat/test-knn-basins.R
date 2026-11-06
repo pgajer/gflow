@@ -239,6 +239,9 @@ test_that("inputs and numeric distance range are validated", {
     for (bad in list(0, -1, 1.5, NA, Inf, c(1, 2))) {
         expect_error(knn.basins(X, y, 2, min.basin.size = bad), "min.basin.size")
     }
+    for (bad in list(NA, 0, 1, "FALSE", c(TRUE, FALSE), logical(), NULL)) {
+        expect_error(knn.basins(X, y, 2, symmetrize = bad), "symmetrize")
+    }
     expect_error(knn.basins(X, y, 2, metric = "linf.simplex"), "metric")
     expect_error(knn.basins(X, y, 2, direction = "up"), "direction")
     expect_error(knn.basins(matrix(c(-1e308, 1e308)), c(0, 1), 1), "rescale X")
@@ -252,4 +255,183 @@ test_that("inputs and numeric distance range are validated", {
     broken <- huge
     broken$max$labels <- integer()
     expect_error(print(broken), "malformed max")
+})
+
+# Independent directed oracle: enumerate field thresholds and traverse only
+# outgoing edges. Neither widest-path code nor the package's flow is called.
+knn.basins.reference.escape <- function(adjacency, field, peaks, peak) {
+    for (level in sort(unique(field[field <= field[peak]]), decreasing = TRUE)) {
+        seen <- peak
+        repeat {
+            add <- which(colSums(adjacency[seen, , drop = FALSE]) > 0 & field >= level)
+            expanded <- union(seen, add)
+            if (length(expanded) == length(seen)) break
+            seen <- expanded
+        }
+        targets <- intersect(seen, peaks[field[peaks] > field[peak]])
+        if (length(targets)) {
+            parent <- targets[order(-field[targets], targets)][1]
+            return(list(level = level, parent = parent, persistence = field[peak] - level))
+        }
+    }
+    list(level = NA_real_, parent = NA_integer_, persistence = Inf)
+}
+
+test_that("asymmetric neighborhoods test exactly k outgoing choices", {
+    X <- matrix(c(0, 1, 3.5))
+    y <- c(0, 5, 10)
+    directed <- knn.basins(X, y, 1, symmetrize = FALSE)
+    symmetric <- knn.basins(X, y, 1)
+    expect_identical(symmetric$max$extrema$row, 3L)
+    expect_identical(directed$max$extrema$row, c(3L, 2L))
+    expect_identical(directed$max$labels, c(2L, 2L, 3L))
+    expect_identical(directed$max$next.vertex, c(2L, NA_integer_, NA_integer_))
+    expect_identical(directed$min$labels, rep(1L, 3))
+    expect_equal(lengths(directed$neighborhood$adj.list), rep(1L, 3))
+    expect_identical(directed$neighborhood$adj.list[[2]], 1L)
+    expect_equal(directed$max$extrema$local.gap, c(5, 5))
+    # The lower peak cannot follow the incoming edge from the higher peak.
+    expect_equal(directed$neighborhood$n.components, 1L)
+    expect_true(all(directed$max$extrema$essential))
+    expect_true(all(is.infinite(directed$max$extrema$persistence)))
+    expect_identical(directed$parameters$symmetrization, "none")
+    expect_identical(directed$parameters$persistence, "directed_escape")
+    expect_output(print(directed), "directed escape prominence")
+    explicit <- knn.basins(X, y, 1, symmetrize = TRUE)
+    expect_identical(explicit$max, symmetric$max)
+    expect_identical(explicit$min, symmetric$min)
+    expect_identical(explicit$neighborhood, symmetric$neighborhood)
+})
+
+test_that("directed flow follows the graph CLOSEST shortest improving edge rule", {
+    # Row 1 can ascend one unit to the modest peak or two units to a much
+    # higher peak. The short step determines its initial basin.
+    X <- matrix(c(0, 1, 2.2, -2, -2.1))
+    y <- c(0, 2, 1, 100, 99)
+    fit <- knn.basins(X, y, 2, symmetrize = FALSE)
+    expect_identical(fit$max$next.vertex[1], 2L)
+    expect_identical(fit$max$initial.labels, c(2L, 2L, 2L, 4L, 4L))
+    # Direct parity with the selector used by canonical plateau trajectory
+    # flow, applied to singleton plateaus and no edge-length cutoff.
+    graph <- fit$neighborhood
+    plateaus <- list(plateau.of.vertex = seq_along(y), level = y)
+    edges <- gflow:::.trajectory.plateau.boundary.edges(
+        plateaus, graph$adj.list, graph$edge.length.list
+    )
+    for (direction in c("max", "min")) for (i in seq_along(y)) {
+        selected <- gflow:::.trajectory.plateau.outgoing.edge(
+            i, direction, plateaus, edges, Inf, "allow"
+        )$edge
+        expected <- if (is.null(selected)) NA_integer_ else selected$target.vertex
+        expect_identical(fit[[direction]]$next.vertex[i], expected)
+    }
+    ties <- knn.basins(matrix(c(-1, 0, 1)), c(1, 0, 100), 2, symmetrize = FALSE)
+    expect_identical(ties$max$next.vertex[2], 1L)
+})
+
+test_that("directed extrema and escape levels match independent threshold reachability", {
+    set.seed(19824)
+    X <- matrix(rnorm(54), ncol = 3)
+    # Repeated field values exercise weak extrema and equal escape targets.
+    y <- sample(rep(1:9, each = 2))
+    for (metric in c("L2", "Linfty")) for (k in c(1L, 3L, 8L)) {
+        fit <- knn.basins(X, y, k, metric, symmetrize = FALSE)
+        reference <- knn.basins.reference.graph(X, k, metric)
+        adjacency <- matrix(FALSE, nrow(X), nrow(X))
+        adjacency[cbind(rep(seq_len(nrow(X)), each = k),
+                         as.vector(t(reference$index)))] <- TRUE
+        expect_identical(fit$neighborhood$knn.index, reference$index)
+        for (i in seq_len(nrow(X))) {
+            expect_identical(fit$neighborhood$adj.list[[i]], which(adjacency[i, ]))
+            expect_equal(fit$neighborhood$edge.length.list[[i]],
+                         unname(reference$distance[i, adjacency[i, ]]))
+        }
+        for (direction in c("max", "min")) {
+            field <- if (direction == "max") y else -y
+            peaks <- which(vapply(seq_along(y), function(i)
+                all(field[i] >= field[adjacency[i, ]]), logical(1)))
+            tab <- fit[[direction]]$extrema
+            expect_setequal(tab$row, peaks)
+            for (i in seq_len(nrow(tab))) {
+                oracle <- knn.basins.reference.escape(adjacency, field, peaks, tab$row[i])
+                expect_equal(tab$persistence[i], oracle$persistence)
+                expect_equal(tab$merge.level[i], if (direction == "max") oracle$level else -oracle$level)
+                expect_identical(tab$parent.row[i], oracle$parent)
+            }
+            next.vertex <- fit[[direction]]$next.vertex
+            for (i in seq_along(y)) {
+                better <- which(adjacency[i, ] & field > field[i])
+                expected <- if (!length(better)) NA_integer_ else
+                    better[order(reference$distance[i, better], better)][1]
+                expect_identical(next.vertex[i], expected)
+                terminal <- i
+                while (!is.na(next.vertex[terminal])) terminal <- next.vertex[terminal]
+                expect_identical(fit[[direction]]$initial.labels[i], terminal)
+            }
+            expect_equal(sum(tab$initial.size), nrow(X))
+            expect_false(anyNA(fit[[direction]]$initial.labels))
+        }
+    }
+})
+
+test_that("directed ties keep the per-row test and do not pool neighborhoods", {
+    # Row 1 sees an equal row and stops. Row 2 sees row 3 and ascends.
+    fit <- knn.basins(matrix(c(0, 2, 3)), c(5, 5, 10), 1, symmetrize = FALSE)
+    expect_identical(fit$max$extrema$row, c(3L, 1L))
+    expect_equal(fit$max$extrema$persistence, c(Inf, 0))
+    expect_equal(fit$max$extrema$merge.level, c(NA, 5))
+    expect_identical(fit$max$extrema$parent.row, c(NA_integer_, 3L))
+    expect_identical(fit$max$initial.labels, c(1L, 3L, 3L))
+    expect_identical(fit$max$extrema$plateau.size, c(1L, 1L))
+    merged <- knn.basins(matrix(c(0, 2, 3)), c(5, 5, 10), 1,
+                         symmetrize = FALSE, min.persistence = 0.1)
+    expect_identical(merged$max$labels, rep(3L, 3))
+    expect_identical(merged$max$next.vertex, fit$max$next.vertex)
+    flat <- knn.basins(matrix(1:6), rep(7, 6), 2,
+                       symmetrize = FALSE, min.persistence = Inf)
+    for (d in c("max", "min")) {
+        expect_identical(flat[[d]]$initial.labels, 1:6)
+        expect_true(all(flat[[d]]$extrema$essential))
+        expect_equal(flat[[d]]$extrema$local.gap, rep(0, 6))
+        expect_true(all(is.na(flat[[d]]$next.vertex)))
+    }
+    # Equal-height peaks are not strictly better escape targets.
+    equal <- knn.basins(matrix(1:5), c(0, 3, 1, 3, 0), 2, symmetrize = FALSE)
+    expect_identical(equal$max$extrema$row, c(2L, 4L))
+    expect_true(all(equal$max$extrema$essential))
+})
+
+test_that("directed prominence merging precedes independent size filtering", {
+    X <- matrix(1:9); y <- c(0, 4, 3, 1, 2, 3, 2, 1, 0)
+    fit <- knn.basins(X, y, 2, symmetrize = FALSE, min.persistence = 2)
+    expect_identical(fit$max$extrema$row, c(2L, 6L))
+    expect_equal(fit$max$extrema$persistence, c(Inf, 2))
+    expect_identical(fit$max$labels, c(rep(2L, 4), rep(6L, 5)))
+    merged <- knn.basins(X, y, 2, symmetrize = FALSE,
+                         min.persistence = 2.1, min.basin.size = 8)
+    expect_identical(merged$max$labels, rep(2L, 9))
+    expect_identical(merged$max$initial.labels, fit$max$initial.labels)
+    expect_identical(merged$max$next.vertex, fit$max$next.vertex)
+    filtered <- knn.basins(X, y, 2, symmetrize = FALSE, min.basin.size = 5)
+    expect_identical(filtered$max$labels, c(rep(NA_integer_, 4), rep(6L, 5)))
+    expect_identical(filtered$max$persistence.labels, fit$max$labels)
+    chain <- knn.basins(matrix(1:13), c(0,10,6,2,5,9,8,7,7.5,8,4,1,0), 2,
+                        symmetrize = FALSE, min.persistence = 8)
+    expect_identical(chain$max$extrema$parent.row, c(NA_integer_, 2L, 6L))
+    expect_identical(chain$max$labels, rep(2L, 13))
+})
+
+test_that("directed minima reverse maxima including duplicate coordinates and ties", {
+    X <- cbind(c(0,0,1,2,2,4,7), c(0,0,3,1,1,0,4))
+    y <- c(0,2,2,1,3,0,3)
+    for (metric in c("L2", "Linfty")) {
+        fit <- knn.basins(X, y, 2, metric, symmetrize = FALSE,
+                          min.persistence = 1.5, min.basin.size = 2)
+        inverse <- knn.basins(X, -y, 2, metric, direction = "max", symmetrize = FALSE,
+                              min.persistence = 1.5, min.basin.size = 2)$max
+        inverse$extrema$value <- -inverse$extrema$value
+        inverse$extrema$merge.level <- -inverse$extrema$merge.level
+        expect_identical(fit$min, inverse)
+        expect_true(all(is.finite(fit$neighborhood$knn.distance)))
+    }
 })

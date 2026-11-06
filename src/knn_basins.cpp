@@ -1,6 +1,8 @@
 #include <Rcpp.h>
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -119,4 +121,87 @@ Rcpp::List rcpp_knn_basins_neighbors(const Rcpp::NumericMatrix& X,
         Rcpp::_["component"] = component,
         Rcpp::_["n.components"] = count
     );
+}
+
+// Directed escape levels: maximize the minimum field value along an outgoing
+// path from each terminal row to any STRICTLY higher terminal row. This is a
+// widest-path search, not a union-find merge tree. Equal-height terminal rows
+// remain distinct; ties between equally good escape targets prefer the higher
+// target, then its smaller row index. Only O(n + nk) workspace is retained.
+// [[Rcpp::export(rng = false)]]
+Rcpp::List rcpp_knn_basins_escape(const Rcpp::List& adjacency,
+                                 const Rcpp::NumericVector& field,
+                                 const Rcpp::IntegerVector& extrema) {
+    const int n = field.size(), m = extrema.size();
+    if (adjacency.size() != n || n == 0 || m == 0) {
+        Rcpp::stop("Invalid directed escape inputs.");
+    }
+    std::vector<std::vector<int>> edges(n);
+    std::vector<int> extremum_index(n, -1);
+    for (int i = 0; i < n; ++i) {
+        if (!std::isfinite(field[i])) Rcpp::stop("Field must be finite.");
+        Rcpp::IntegerVector neighbors = adjacency[i];
+        edges[i].reserve(neighbors.size());
+        for (int j : neighbors) {
+            if (j < 1 || j > n) Rcpp::stop("Invalid directed neighbor index.");
+            edges[i].push_back(j - 1);
+        }
+    }
+    double highest = -std::numeric_limits<double>::infinity();
+    for (int i = 0; i < m; ++i) {
+        if (extrema[i] == NA_INTEGER) Rcpp::stop("Invalid directed extremum index.");
+        const int v = extrema[i] - 1;
+        if (v < 0 || v >= n || extremum_index[v] >= 0) {
+            Rcpp::stop("Invalid directed extremum index.");
+        }
+        extremum_index[v] = i;
+        highest = std::max(highest, field[v]);
+    }
+    Rcpp::NumericVector merge_level(m, NA_REAL);
+    Rcpp::IntegerVector parent(m, NA_INTEGER);
+    std::vector<double> best(n);
+    using Entry = std::pair<double, int>;
+    for (int i = 0; i < m; ++i) {
+        Rcpp::checkUserInterrupt();
+        const int start = extrema[i] - 1;
+        // In particular, a completely flat field needs no path searches.
+        if (field[start] == highest) continue;
+        std::fill(best.begin(), best.end(), -std::numeric_limits<double>::infinity());
+        std::priority_queue<Entry> queue;
+        best[start] = field[start];
+        queue.emplace(best[start], start);
+        int target = -1, iterations = 0;
+        double escape = -std::numeric_limits<double>::infinity();
+        while (!queue.empty()) {
+            if (++iterations % 1024 == 0) Rcpp::checkUserInterrupt();
+            const auto entry = queue.top();
+            queue.pop();
+            const double level = entry.first;
+            const int v = entry.second;
+            if (target >= 0 && level < escape) break;
+            if (level < best[v]) continue;
+            if (extremum_index[v] >= 0 && field[v] > field[start]) {
+                if (target < 0 || field[v] > field[target] ||
+                    (field[v] == field[target] && v < target)) {
+                    target = v;
+                }
+                escape = level;
+            }
+            // Finish the entire threshold level to resolve equal-bottleneck
+            // target ties, including targets reached through other extrema.
+            for (const int w : edges[v]) {
+                const double candidate = std::min(level, field[w]);
+                if (candidate > best[w]) {
+                    best[w] = candidate;
+                    queue.emplace(candidate, w);
+                }
+            }
+        }
+        if (target >= 0) {
+            merge_level[i] = escape;
+            parent[i] = extremum_index[target] + 1;
+        }
+    }
+    return Rcpp::List::create(Rcpp::_["merge.level"] = merge_level,
+                              Rcpp::_["parent"] = parent);
 }
