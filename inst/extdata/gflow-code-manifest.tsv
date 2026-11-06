@@ -532,7 +532,7 @@ inst/include/Spectra/Util/SelectionRule.h	8842650ab86bb23416ce95ad43322b59
 inst/include/Spectra/Util/SimpleRandom.h	840f08da0e08a41893441c061b4eb18b
 inst/include/Spectra/Util/TypeTraits.h	2a9d6706d590e419e91e6507893feec5
 inst/include/Spectra/Util/Version.h	f722f8efd1eb0704f952716e74d2016c
-NAMESPACE	addfb6d4f6773642fefc5b417b2f58b3
+NAMESPACE	7be2f3d4804ddb43056d8e0319bbba4a
 R/2d_smooth_morse_smale.R	8e5bc6d728111df84121e928b40f2e3f
 R/analyze_comono_distributions.R	cd4931162f49a86903be176dc85ee80e
 R/annotation.R	ed8df33997b96a85a8d5f472187331d2
@@ -572,9 +572,6 @@ R/distance_graph_helpers.R	76142863b7acebef19432c3214cf5115
 R/extract_stable_clusters.R	5b9f15dd14fad8e873528c77581f8795
 R/extrema_utils.R	822766d3f933d635f93d307df27c0260
 R/extremality_utils.R	7e44e0f73fa45bdef184ff9cb3a0c2d5
-R/fassoc_test.R	6462152723a95231c54eee823cd723c1
-R/fassoc0_test_paired.R	598a61573a7b8ab36675fc83ce883a1d
-R/fassoc1_test_paired.R	acc6edbbc9197a114e36beeffcc4deef
 R/filter_basins_by_relvalue.R	03e9329057c0af622e8b942077975ac7
 R/filter_basins.R	35993742124588e0464898fb164980a1
 R/find_discrepant_pairs.R	61d3d0fc3d2b5dda9fc280528189d5cb
@@ -589,7 +586,7 @@ R/gflow_cx_utils.R	ff78b99f0e1b1744e604a21bd73311a4
 R/gflow_cx.R	499b1eb00094323a4cc1f2f675bc23ad
 R/gflow_graph_plot.R	8e0419a85c647966b9d4cc91b2c01a33
 R/gflow_graph.R	eec4a94a4d656e23bcb0cf44acbd277d
-R/gflow-migration.R	3381b45b9251b0f86a9d8a31b77721dc
+R/gflow-migration.R	175ade89e8fa93253765d9eb8580b93d
 R/gflow-package.R	8982978e1cb8174778370b85cfcd76f0
 R/globals.R	f3b359325747c0a7289f09bce92edbc6
 R/gradient_basin_utilities.R	a5d304a39d0c254343adebf7d3c63864

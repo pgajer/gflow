@@ -1,5 +1,10 @@
 # gflow 0.2.0 (unreleased)
 
+* Moved the private `fassoc0.test()`, `fassoc1.test()`, and `fassoc.test()`
+  implementations, aliases, and companion helpers to `gflowx`. No other gflow
+  functions called them, so no replacement estimator was needed. Flow-aware
+  `gfassoc.*` functions are a separate family and remain available.
+
 ## Bug fixes
 
 * `lcor.with.posterior()` now validates every feature before computation and

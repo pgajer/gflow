@@ -655,7 +655,7 @@ These instructions are available in installed help as
 | Archived response smoothing / conditional-expectation estimators | `gflowx` is the archive for reproducing those analyses. Current `geosmooth` is a separate smoothing package, not an automatic drop-in replacement for every retired function. |
 | Removed one-dimensional model-averaging functions (`magelo`, `mabilo`, `fit.pwlm*`, related families) | Extracted to `malo`; gflow no longer provides forwarders. Check that package's public help for the specific estimator. |
 | PHATE, diffusion/potential pseudotime, quadratic-form geodesics, random-walk smoothing experiments | Removed from the gflow API. No supported successor is claimed here. |
-| Removed generic weighted-p-value helpers and `fassoc*` tests | No public core adapter. Choose an inferential procedure for the actual estimand; flow-aware descriptive summaries are not replacement tests. |
+| Removed generic weighted-p-value helpers and `fassoc*` tests | The private `fassoc*` implementations and companion helpers are archived in `gflowx`; no callers remain in gflow. No public core adapter. Choose an inferential procedure for the actual estimand; flow-aware descriptive summaries are not replacement tests. |
 
 Do not assume a renamed dependency function accepts the same object or
 arguments. These package boundaries do not require installing sibling packages

@@ -15,20 +15,36 @@ test_that("canonical local and flow-aware association APIs are exported", {
   expect_true(all(canonical %in% exports))
 })
 
-test_that("shape-specific and generic conditional-mean helpers are private", {
+test_that("shape-specific local correlation helpers are private", {
   exports <- getNamespaceExports("gflow")
   private <- c(
     "lcor.vector.matrix",
-    "lcor.matrix.matrix",
+    "lcor.matrix.matrix"
+  )
+  expect_false(any(private %in% exports))
+})
+
+test_that("archived functional association implementations are absent", {
+  archived <- c(
     "fassoc.test",
     "fassoc0.test",
     "fassoc1.test",
+    "zofam.test",
+    "fofam.test",
+    "functional.association.test",
     "total.associations",
     "create.delta1.Delta1.df",
     "delta.indices",
-    "compute.diff.profiles"
+    "compute.diff.profiles",
+    ".coef.assoc0", ".coef.assoc1",
+    ".print.assoc0", ".print.assoc1", ".print.fassoc",
+    ".summary.assoc0", ".summary.assoc1", ".summary.fassoc",
+    ".print.summary.assoc0", ".print.summary.assoc1",
+    ".plot.assoc0", ".plot.assoc1",
+    ".extract.derivatives", ".extract.assoc1.derivatives"
   )
-  expect_false(any(private %in% exports))
+  expect_false(any(vapply(archived, exists, logical(1),
+                         envir = asNamespace("gflow"), inherits = FALSE)))
 })
 
 test_that("canonical local front doors preserve vertex grain", {

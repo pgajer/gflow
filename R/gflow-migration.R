@@ -36,8 +36,10 @@
 #' forwarders remain. Check the destination package's public help.
 #' PHATE, diffusion/potential pseudotime, quadratic-form geodesics and
 #' random-walk smoothing experiments are removed; no supported successor is
-#' claimed here. Generic weighted-p-value helpers and `fassoc*` tests have no
-#' public core adapter.
+#' claimed here. The private `fassoc.test()`, `fassoc0.test()`, and
+#' `fassoc1.test()` implementations and their companion helpers have moved to
+#' `gflowx`; no callers remain in gflow. Generic weighted-p-value helpers and
+#' `fassoc*` tests have no public core adapter.
 #'
 #' @section Association:
 #' Use \code{\link{lcor}}, \code{\link{lslope}}, and
