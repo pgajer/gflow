@@ -104,6 +104,7 @@ static const R_CMethodDef cMethods[] = {
 extern "C" {
 #endif
 SEXP _gflow_rcpp_local_pca_chart(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _gflow_rcpp_knn_basins_neighbors(SEXP, SEXP, SEXP);
 #ifdef __cplusplus
 }
 #endif
@@ -205,6 +206,7 @@ static const R_CallMethodDef CallMethods[] = {
   {"S_ugg_get_path_data", (DL_FUNC) &S_ugg_get_path_data, 11},
 
   {"_gflow_rcpp_local_pca_chart", (DL_FUNC) &_gflow_rcpp_local_pca_chart, 9},
+  {"_gflow_rcpp_knn_basins_neighbors", (DL_FUNC) &_gflow_rcpp_knn_basins_neighbors, 3},
 
   // =========================================================================
   // stat utilities

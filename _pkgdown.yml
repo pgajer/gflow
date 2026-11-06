@@ -19,6 +19,8 @@ navbar:
     articles:
       text: Worked examples
       menu:
+        - text: Peaks and basins from a data matrix
+          href: articles/knn-basins.html
         - text: Paths, grids, and disconnected graphs
           href: articles/example-graphs-and-fields.html
         - text: Canonical basin workflow

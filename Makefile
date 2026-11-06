@@ -1,4 +1,4 @@
-.PHONY: clean build build-verbose check check-fast install document manifest attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary audit-final-acceptance audit-api-guide preview-user-guides install-user showcase website
+.PHONY: clean build build-verbose check check-fast install document manifest attrs check-r-toolchain audit-malo-exports audit-s3-namespace audit-phase7-ownership audit-cleanup-boundary audit-final-acceptance audit-api-guide preview-user-guides preview-knn-basins install-user showcase website
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
@@ -80,6 +80,9 @@ audit-api-guide:
 
 preview-user-guides:
 	@$(RSCRIPT_RUN) tools/render_user_guides.R
+
+preview-knn-basins:
+	@$(RSCRIPT_RUN) tools/render_knn_basins_vignette.R
 
 # User installation keeps the same libraries as the dependency bootstrap.
 install-user:

@@ -1,4 +1,5 @@
 "class","ownership","constructor","validator","stable_fields","methods","documentation","tests","status"
+"gflow_knn_basins","CORE-ANALYSIS","knn.basins",".validate.knn.basins","max;min;neighborhood;y;row.names;parameters;call","print.gflow_knn_basins","man/knn.basins.Rd","tests/testthat/test-knn-basins.R","retained"
 "gfc_modulation","CORE-ANALYSIS","compute.gfc.modulation",".validate.gfc.modulation","modulated.weight.list;modulation;n.vertices;n.edges","plot.gfc_modulation;print.gfc_modulation","man/compute.gfc.modulation.Rd","tests/testthat/test-phase6-s3-contracts.R","retained"
 "gfcor","CORE-ASSOCIATION","gfcor",".validate.gfcor","global;basin_character;n_vertices;polarity_scale;epsilon","print.gfcor;summary.gfcor","man/gfcor.Rd","tests/testthat/test-phase6-s3-contracts.R","retained"
 "gflow_graph","CORE-ANALYSIS","construct.gflow.graph",".validate.gflow.graph","adjacency.list;weight.list;intersection.matrix;basin.metadata;n.ascending;n.descending;edge.type;min.intersection","plot.gflow_graph;print.gflow_graph;summary.gflow_graph","man/construct.gflow.graph.Rd","tests/testthat/test-phase6-s3-contracts.R","retained"

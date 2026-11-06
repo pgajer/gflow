@@ -1,5 +1,18 @@
 # gflow 0.2.0 (unreleased)
 
+* Added the `knn-basins` vignette with synthetic 1D/2D examples and the
+  Maunga Whau terrain data, including L2/Linfty and neighborhood-scale
+  comparisons, sampling-density diagnostics, and independent numerical checks.
+  `make preview-knn-basins` renders it from optimized local package sources.
+
+* Added `knn.basins(X, y, k)` for maxima and minima directly in the supplied
+  feature space, with exact L2/Linfty distances and union-symmetrized kNN
+  neighborhoods. Connected plateaus share an extremum; nearest-improving
+  flow assigns initial basins. Persistence merges weaker extrema into their
+  surviving ancestors, followed by an independent assigned-size filter.
+  Original, merged, and filtered labels are retained for inspection. No PCA,
+  scaling, normalization, or response smoothing is applied.
+
 * Moved the private `fassoc0.test()`, `fassoc1.test()`, and `fassoc.test()`
   implementations, aliases, and companion helpers to `gflowx`. No other gflow
   functions called them, so no replacement estimator was needed. Flow-aware

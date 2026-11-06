@@ -33,6 +33,7 @@ if (knitr::is_html_output()) knitr::include_graphics("figures/basin-showcase.png
 
 | Your task | Entry point | Worked route |
 |---|---|---|
+| Find basins from a matrix and outcome | [`knn.basins()`](https://pgajer.github.io/gflow/reference/knn.basins.html) | [Matrix-input basins](#matrix-input-basins), using L2 or Linfty in the supplied coordinates. |
 | Construct and compare basins | [`create.basin.complex()`](https://pgajer.github.io/gflow/reference/create.basin.complex.html) | [First analysis](#a-complete-first-analysis) and [construction workflow](basin_complex_workflow_vignette.html). |
 | Inspect hierarchy and support | [`get.basin.merge.tree()`](https://pgajer.github.io/gflow/reference/get.basin.merge.tree.html), [`get.basin.table()`](https://pgajer.github.io/gflow/reference/get.basin.table.html), [`get.basin.membership()`](https://pgajer.github.io/gflow/reference/get.basin.membership.html) | [Path and grid examples](example-graphs-and-fields.html); distinguish raw, retained and assigned supports. |
 | Follow trajectories | [`get.basin.trajectory.forest()`](https://pgajer.github.io/gflow/reference/get.basin.trajectory.forest.html), [`construct.madag()`](https://pgajer.github.io/gflow/reference/construct.madag.html) | [Canonical trajectory workflow](basin_complex_workflow_vignette.html). |
@@ -55,6 +56,51 @@ response field. Set `z.diff.type = "difference"` explicitly for an ordinary
 response slope. The local statistic is an edge-difference cosine; interpreting
 it as a Euclidean gradient cosine requires isotropic local directions, as
 explained in `help("lcor", package = "gflow")`.
+
+## Matrix-input basins
+
+The [peaks, troughs, and basins vignette](knn-basins.html) works through
+synthetic 1D and 2D fields and real terrain, with numerical and visual checks.
+
+`knn.basins(X, y, k)` takes a numeric matrix and one outcome per row. It uses
+all supplied columns, with no PCA, scaling, normalization, or outcome
+smoothing. Choose `metric = "L2"` or `"Linfty"`; feature units therefore
+matter. Each row selects `k` other rows, and an undirected connection is
+included if either row selects the other.
+
+```{r matrix-input-basins}
+X <- matrix(seq_len(9), ncol = 1)
+y <- c(0, 4, 3, 1, 2, 3, 2, 1, 0)
+kb <- gflow::knn.basins(X, y, k = 2, metric = "L2",
+                       min.persistence = 2.1, min.basin.size = 3)
+kb
+kb$max$extrema[, c("row", "value", "merge.level", "persistence",
+                   "initial.size", "merged.size", "status")]
+kb$max$labels
+kb$min$basins
+```
+
+Here the maximum at row 6 has height 3 and joins the higher maximum at row 2
+at outcome level 1: its persistence is 2 outcome units. The threshold 2.1
+merges its basin into row 2's basin. `direction = "both"` computes minima
+as well; `"max"` and `"min"` select a single orientation.
+
+Connected equal-valued rows form one plateau. Initial basins follow the
+nearest improving boundary edge of each plateau. `initial.labels` records
+these assignments; `persistence.labels` records assignments after merging.
+The separate size filter counts assigned rows at that stage and sets final
+`labels` to `NA` in undersized basins. It does not reassign those observations.
+Labels identify representative row indices, and `basins` lists the retained
+row sets. Merging follows the topological elder, which need not be an adjacent
+flow basin; final unions can be disconnected if an intervening basin is
+retained. A larger `k` does not itself guarantee a minimum basin size.
+
+One essential extremum per connected component has infinite persistence and
+no merge level. The size filter can still remove its basin. This convention
+differs from the canonical merge-tree interface's finite component-range
+endpoint. `neighborhood$radius` reports each row's kth-neighbor distance;
+inspect it when sampling density varies. Exact neighbor search takes
+quadratic time in the row count, without storing a full distance matrix.
 
 ## A complete first analysis
 
@@ -426,6 +472,7 @@ availability from recommendation. Open exact arguments with
 | Function | Purpose | Status |
 |---|---|---|
 | [`create.basin.complex()`](https://pgajer.github.io/gflow/reference/create.basin.complex.html) | Construct a canonical basin analysis with a chosen method. | Start |
+| [`knn.basins()`](https://pgajer.github.io/gflow/reference/knn.basins.html) | Identify maxima/minima from X and y; merge by persistence and filter assigned basin size. | Start |
 | [`as.basin.complex()`](https://pgajer.github.io/gflow/reference/as.basin.complex.html) | Validate a canonical object or reconstruct from a supported archive. | Start |
 | [`compute.basins.of.attraction()`](https://pgajer.github.io/gflow/reference/compute.basins.of.attraction.html) | Retired reachability constructor; use canonical `geodesic_reachability`. | Retired |
 | [`compute.gfc()`](https://pgajer.github.io/gflow/reference/compute.gfc.html) | Retired composite refinement workflow; translate controls into canonical construction/refinement. | Retired |
@@ -633,7 +680,7 @@ coverage inspectable.
 | `lmin` | `basin_summary`, `basins` |
 | `merge` | `clustered.basins`, `gfc.basins`, `gfc.flow.basins`, `two.basins`, `two.extrema` |
 | `plot` | `basin.merge.tree`, `basin_complex`, `basin_cx`, `feature.prevalence`, `gfc_modulation`, `gflow_graph`, `gflow_local_extrema`, `graphMScx`, `morse.smale.trajectories.from.point` |
-| `print` | `basin_complex`, `basin_cx`, `basins_of_attraction`, `gfc.flow`, `gfc_basins`, `gfc_cell_trajectories`, `gfc_modulation`, `gfcor`, `gflow_cx`, `gflow_graph`, `gradient_flow_cells`, `harmonic_extension`, `lcor.posterior`, `lcor_permutation_test`, `lcor_matrix_matrix_result`, `lcor_vector_matrix_result`, `lslope_gradient_result`, `lslope_matrix_matrix_result`, `lslope_neighborhood_result`, `lslope_vector_matrix_result`, `madag`, `se_tree`, `summary.basin_complex`, `summary.basin_cx`, `summary.gfc_basin_trajectories`, `summary.gfc_cell_trajectories`, `summary.gfcor`, `summary.gflow_basins`, `summary.gflow_graph`, `summary.gflow_local_extrema`, `summary.ggflow`, `summary.lcor.posterior` |
+| `print` | `gflow_knn_basins`, `basin_complex`, `basin_cx`, `basins_of_attraction`, `gfc.flow`, `gfc_basins`, `gfc_cell_trajectories`, `gfc_modulation`, `gfcor`, `gflow_cx`, `gflow_graph`, `gradient_flow_cells`, `harmonic_extension`, `lcor.posterior`, `lcor_permutation_test`, `lcor_matrix_matrix_result`, `lcor_vector_matrix_result`, `lslope_gradient_result`, `lslope_matrix_matrix_result`, `lslope_neighborhood_result`, `lslope_vector_matrix_result`, `madag`, `se_tree`, `summary.basin_complex`, `summary.basin_cx`, `summary.gfc_basin_trajectories`, `summary.gfc_cell_trajectories`, `summary.gfcor`, `summary.gflow_basins`, `summary.gflow_graph`, `summary.gflow_local_extrema`, `summary.ggflow`, `summary.lcor.posterior` |
 | `show.basin` | `basin_cx` |
 | `summary` | `basin_complex`, `basin_cx`, `basins_of_attraction`, `gfc.flow`, `gfc_basin_trajectories`, `gfc_cell_trajectories`, `gfcor`, `gflow_basins`, `gflow_graph`, `gflow_local_extrema`, `ggflow`, `gradient_flow_cells`, `lcor.posterior`, `lcor_matrix_matrix_result`, `lcor_vector_matrix_result`, `lslope_matrix_matrix_result`, `lslope_vector_matrix_result`, `madag` |
 | `vertices` | `feature.carriers`, `gflow_local_extrema` |

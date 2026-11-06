@@ -1,0 +1,779 @@
+---
+title: "Finding peaks, troughs, and basins directly from data"
+output:
+  rmarkdown::html_vignette:
+    css: !expr c(system.file("rmarkdown/templates/html_vignette/resources/vignette.css", package = "rmarkdown"), "guide.css")
+    toc: true
+    toc_depth: 2
+vignette: >
+  %\VignetteIndexEntry{Finding peaks, troughs, and basins directly from data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+library(gflow)
+if (!exists("knn_build_identity")) knn_build_identity <- get.gflow.build.identity()
+artifact_dir <- if (exists("knn_artifact_dir")) knn_artifact_dir else
+    file.path(tempdir(), "gflow-knn-vignette")
+dir.create(artifact_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(artifact_dir, "figures"), showWarnings = FALSE)
+knitr::opts_chunk$set(
+    collapse = TRUE, comment = "#>", warning = TRUE, message = FALSE,
+    fig.width = 8.4, fig.height = 4.8, dpi = 144, fig.retina = 2,
+    dev = "png", out.width = "100%",
+    fig.path = paste0(file.path(artifact_dir, "figures"), "/"),
+    cache.path = paste0(file.path(artifact_dir, "cache"), "/"),
+    cache.extra = list(build = knn_build_identity$build.id,
+                       runtime = knn_build_identity$runtime$id,
+                       R = R.version.string)
+)
+knitr::opts_knit$set(progress = TRUE)
+```
+
+`knn.basins()` identifies extrema of an outcome `y` at the rows of a data
+matrix `X`. It uses all supplied coordinates, with no PCA, scaling, or outcome
+smoothing. This vignette follows three examples: a known one-dimensional
+function, an irregularly sampled two-dimensional surface, and the Maunga Whau
+terrain data supplied with R.
+
+The examples separate three decisions. **Neighborhood size** sets the spatial
+scale at which a point must dominate its neighbors. **Persistence** measures
+vertical separation from an older extremum. **Minimum basin size** requires
+enough assigned observations after persistence merging. A narrow, distinct
+feature can pass the persistence threshold and still fail the size threshold.
+
+## What the function returns
+
+Each observation selects its `k` nearest other observations. A connection is
+included if either endpoint selects the other, giving an undirected,
+union-symmetrized kNN neighborhood. L2 uses Euclidean distance; Linfty uses
+the largest absolute coordinate difference. Connected observations with exactly
+equal outcomes form one plateau. A plateau chooses its nearest improving
+boundary edge, and following those choices produces the initial flow basins.
+
+For maxima, persistence is the peak height minus the level where its
+superlevel component joins a component with an older peak. Minima reverse
+the construction: persistence is the merge level minus the trough height.
+Higher maxima and lower minima are older; equal-height extrema use the
+smaller representative row. Each connected component has one essential
+extremum per direction, with infinite persistence and no finite merge level.
+
+| Stage | Returned labels | Rule |
+|---|---|---|
+| Initial flow | `initial.labels` | Follow nearest improving plateaus. |
+| Persistence merging | `persistence.labels` | Merge extrema with persistence strictly below the threshold into surviving ancestors. |
+| Size filtering | `labels` | Set labels to `NA` in remaining basins with fewer than the required observations. |
+
+Labels are representative **row indices**, not sequential cluster numbers.
+The `max` and `min` results are separate partitions; their labels and colors
+do not identify the same regions. Size filtering does not reassign excluded
+observations. Merged labels are unions of initial basins, and these unions
+can be disconnected when an intervening basin remains retained. They should
+not be interpreted as physical drainage catchments.
+
+```{r plotting-helpers, include=FALSE}
+ink <- "#253943"
+muted <- "#667780"
+excluded <- "#cbd1d3"
+# Extra distinguishable shades are needed for the initial, unmerged basins.
+# Representative-row labels supply a redundant identity cue.
+basin_palette <- c("#216b9b", "#b78016", "#a64c73", "#548342", "#7860a7",
+                   "#bd683b", "#398f89", "#606c7a", "#b75043", "#8a793e")
+theme_par <- function(...) par(fg = ink, col.axis = ink, col.lab = ink,
+                               col.main = ink, family = "sans", las = 1, cex = 1, ...)
+fmt <- function(x, digits = 3) ifelse(is.infinite(x), "essential",
+                                     formatC(x, format = "f", digits = digits))
+summary_stages <- function(fit, example) {
+    do.call(rbind, lapply(c("max", "min"), function(direction) {
+        z <- fit[[direction]]
+        do.call(rbind, lapply(c("initial.labels", "persistence.labels", "labels"), function(stage) {
+            labels <- z[[stage]]
+            data.frame(example = example, direction = direction,
+                       stage = c(initial.labels = "Initial", persistence.labels = "Persistence",
+                                 labels = "Size filter")[[stage]],
+                       basins = length(unique(labels[!is.na(labels)])),
+                       unassigned = sum(is.na(labels)), n = length(labels))
+        }))
+    }))
+}
+colors_for <- function(labels, fit, direction, X = NULL, reference = fit) {
+    rows <- reference[[direction]]$extrema$row
+    key <- setNames(rep(basin_palette, length.out = length(rows)), rows)
+    if (!identical(fit, reference)) {
+        other <- fit[[direction]]$extrema$row
+        nearest <- vapply(other, function(i)
+            which.min(rowSums(sweep(X[rows, , drop = FALSE], 2, X[i, ], "-")^2)), integer(1))
+        key <- setNames(unname(key[nearest]), other)
+    }
+    color <- unname(key[as.character(labels)])
+    color[is.na(labels)] <- excluded
+    color
+}
+plot_ribbons <- function(fit, x, direction) {
+    theme_par(mar = c(2.6, 6.2, 1.8, .8), mgp = c(1.6, .45, 0))
+    plot(range(x) + c(-.15, .15), c(.5, 3.5), type = "n", yaxt = "n",
+         xlab = if (direction == "min") "Location x" else "",
+         ylab = "", main = if (direction == "max") "Basins toward maxima" else "Basins toward minima",
+         cex.main = .94, xaxs = "i")
+    axis(2, at = 3:1, labels = c("Initial", "Persistence", "Size filter"), tick = FALSE, cex.axis = .84)
+    dx <- diff(x)[1] / 2
+    for (i in 1:3) {
+        labels <- fit[[direction]][[c("initial.labels", "persistence.labels", "labels")[i]]]
+        rect(x - dx, 4 - i - .29, x + dx, 4 - i + .29,
+             col = colors_for(labels, fit, direction), border = NA)
+        for (label in unique(labels[!is.na(labels)])) {
+            at <- median(x[labels == label & !is.na(labels)])
+            text(at, 4 - i, label, col = "white", cex = .70, font = 2)
+        }
+    }
+    box(col = "#cbd1d3")
+}
+basin_map <- function(X, fit, direction, stage, title, contour_data = NULL,
+                      reference = fit, raster_dim = NULL, annotate = TRUE) {
+    theme_par(mar = c(3.2, 3.2, 2.1, .7), mgp = c(1.9, .6, 0), cex.axis = .8, cex.lab = .86)
+    labels <- fit[[direction]][[stage]]
+    cols <- colors_for(labels, fit, direction, X, reference)
+    plot(X, type = "n", asp = 1, xlab = if (is.null(raster_dim)) "Coordinate 1" else "Row-axis offset (m)",
+         ylab = if (is.null(raster_dim)) "Coordinate 2" else "Column-axis offset (m)",
+         main = title, cex.main = .93, xaxs = "i", yaxs = "i")
+    if (is.null(raster_dim)) {
+        points(X, pch = 16, col = cols, cex = .42)
+    } else {
+        palette <- unique(cols)
+        image(sort(unique(X[, 1])), sort(unique(X[, 2])),
+              matrix(match(cols, palette), nrow = raster_dim[1]),
+              col = palette, breaks = seq(.5, length(palette) + .5), add = TRUE, useRaster = TRUE)
+    }
+    if (!is.null(contour_data)) contour(contour_data$x, contour_data$y, contour_data$z,
+                                       levels = contour_data$levels, add = TRUE,
+                                       drawlabels = FALSE, col = "#263b4355", lwd = .65)
+    active <- unique(labels[!is.na(labels)])
+    points(X[active, , drop = FALSE], pch = if (direction == "max") 24 else 25,
+           bg = "white", col = ink, cex = .85, lwd = 1)
+    if (annotate) {
+        # Label only extrema away from the panel edge, where labels are legible.
+        span <- apply(X, 2, range)
+        interior <- apply(X[active, , drop = FALSE], 1, function(z)
+            all(z > span[1, ] + .07 * diff(span) & z < span[2, ] - .07 * diff(span)))
+        a <- active[interior]
+        text(X[a, , drop = FALSE], labels = a, pos = 3, cex = .65, col = ink)
+    }
+    box()
+}
+boundary_extrema <- function(fit, X, direction) {
+    ranges <- apply(X, 2, range)
+    vapply(fit[[direction]]$extrema$plateau.rows, function(rows)
+        any(vapply(seq_len(ncol(X)), function(j)
+            any(X[rows, j] %in% ranges[, j]), logical(1))), logical(1))
+}
+```
+
+## 1. A one-dimensional function with broad and narrow features
+
+We sample 1,000 equally spaced locations on \([0,10]\). The outcome is the
+sum of six Gaussian terms,
+
+\[
+f(x)=\sum_j a_j\exp\left\{-\frac{(x-\mu_j)^2}{2s_j^2}\right\}.
+\]
+
+Positive and negative amplitudes produce peaks and troughs. The components
+overlap, so their centers need not be extrema of the combined function.
+Coordinates and outcome heights have arbitrary, fixed units.
+
+```{r one-data, cache=TRUE}
+components <- data.frame(
+    amplitude = c(2, .5, -1.1, 1.25, -.85, 1.6),
+    center = c(2.3, 3.35, 4.55, 5, 5.45, 7.3),
+    width = c(.72, .10, .38, .055, .24, 1)
+)
+f1 <- function(x) rowSums(matrix(vapply(seq_len(nrow(components)), function(j) {
+    with(components[j, ], amplitude * exp(-.5 * ((x - center) / width)^2))
+}, numeric(length(x))), nrow = length(x)))
+X1 <- matrix(seq(0, 10, length.out = 1000), ncol = 1)
+y1 <- f1(X1[, 1])
+one <- knn.basins(X1, y1, k = 25, metric = "L2",
+                  min.persistence = .25, min.basin.size = 100)
+```
+
+```{r one-components, echo=FALSE}
+knitr::kable(components, digits = 3, caption = "Components of the specified 1D function.")
+```
+
+These illustrative thresholds require 0.25 outcome units of persistence and
+100 assigned observations. They are chosen to expose the different decisions,
+not estimated as optimal settings. The noisy comparison below uses the same
+thresholds. All three stages in the figure come from this single function call.
+
+```{r one-stages, echo=FALSE, fig.height=7.2, fig.cap="The exact 1D field and the three assignment stages. Upward triangles mark original maxima; downward triangles mark original minima. Labels in the strips are representative rows, with consistent colors within each direction. Gray denotes observations excluded by the size filter. Dashed segments show two finite maximum merge levels on the kNN graph; these need not equal continuous-curve saddle levels because kNN edges can jump across narrow features.", fig.alt="A curve with broad peaks, a shallow shoulder and a narrow peak above six colored strips showing persistence merging and size filtering."}
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op))
+    layout(matrix(1:3, ncol = 1), heights = c(2.4, 1.25, 1.25))
+    theme_par(mar = c(2.6, 6.2, 1.6, .8), mgp = c(2.6, .7, 0))
+    plot(X1[, 1], y1, type = "l", lwd = 1.6, col = ink, xlab = "",
+         ylab = "Outcome (arbitrary units)", ylim = c(-1.2, 2.35),
+         xlim = range(X1) + c(-.15, .15), xaxs = "i")
+    for (direction in c("max", "min")) {
+        tab <- one[[direction]]$extrema
+        points(X1[tab$row, 1], tab$value, pch = if (direction == "max") 24 else 25,
+               bg = "white", col = ink, cex = 1)
+    }
+    selected <- one$max$extrema[one$max$extrema$status != "retained", ]
+    for (i in seq_len(nrow(selected))) {
+        xx <- X1[selected$row[i], 1]
+        segments(xx - .20, selected$merge.level[i], xx + .20, selected$merge.level[i],
+                 col = "#a64c73", lty = 2, lwd = 1.2)
+    }
+    text(c(3.32, 5.0), c(1.52, 1.02), c("Shallow shoulder", "Narrow peak"), cex = .82)
+    plot_ribbons(one, X1[, 1], "max")
+    plot_ribbons(one, X1[, 1], "min")
+})
+```
+
+```{r one-table, echo=FALSE}
+one_max_table <- transform(one$max$extrema, location = X1[row, 1])
+knitr::kable(one_max_table[, c("row", "location", "value", "merge.level", "persistence",
+                              "local.gap", "initial.size", "merged.size", "status")],
+              digits = c(0, 3, 3, 3, 3, 5, 0, 0, 0),
+              caption = "All original maxima. Merged size is measured before the size filter; a merged extremum has size zero. Inf denotes an essential extremum.")
+shoulder1 <- one$max$extrema[one$max$extrema$status == "merged", ]
+narrow1 <- one$max$extrema[one$max$extrema$status == "filtered_size", ]
+```
+
+The shoulder has persistence `r fmt(shoulder1$persistence)`, below 0.25, and
+merges into an older maximum. The narrow peak has persistence
+`r fmt(narrow1$persistence)` but only `r narrow1$merged.size` assigned
+observations, so the size filter excludes it. This peak is part of the
+generating function: **small support does not establish that a feature is
+spurious**. Both broad peaks have small local gaps despite substantial
+persistence. The gap compares a peak with its best neighboring value, which
+can be nearly equal near a smooth summit.
+
+The endpoints are also local minima relative to the sampled domain. Their
+basins describe the finite interval, not evidence of additional interior
+troughs. Increasing `k` can change both extrema and merge levels by adding
+connections across intervening features.
+
+### Add noise without changing the underlying function
+
+```{r one-noise, cache=TRUE, dependson="one-data"}
+set.seed(22061)
+y_noisy <- y1 + rnorm(length(y1), sd = .03)
+noisy <- knn.basins(X1, y_noisy, k = 25,
+                    min.persistence = .25, min.basin.size = 100)
+```
+
+```{r noise-and-support, echo=FALSE, fig.height=4.1, fig.cap="Left: the exact function and one Gaussian-noise realization, with standard deviation 0.03 outcome units. Markers identify retained noisy-data extrema. Right: original, exact-field maxima plotted by initial assigned size and persistence; shapes show their final decisions. The horizontal dashed line is the persistence threshold. The essential maximum occupies a separately labeled band, not a finite persistence value. Size filtering uses sizes after merging, as reported in the table.", fig.alt="A noisy 1D curve alongside a scatterplot separating a shallow shoulder from a narrow, persistent peak."}
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op)); par(mfrow = c(1, 2))
+    theme_par(mar = c(4, 4, 2, .8), mgp = c(2.5, .7, 0), cex.axis = .85)
+    plot(X1[, 1], y_noisy, pch = 16, cex = .25, col = "#a2abb0",
+         xlab = "Location x", ylab = "Outcome", main = "Exact function plus noise", cex.main = 1)
+    lines(X1[, 1], y1, col = ink, lwd = 1.5)
+    for (d in c("max", "min")) {
+        tab <- noisy[[d]]$extrema; tab <- tab[tab$retained, ]
+        points(X1[tab$row, 1], tab$value, pch = if (d == "max") 24 else 25,
+               bg = "white", col = "#216b9b", cex = 1)
+    }
+    legend("topright", c("Exact", "Observed"), col = c(ink, "#a2abb0"),
+           lty = c(1, NA), pch = c(NA, 16), bty = "n", cex = .78)
+    tab <- one$max$extrema
+    cap <- max(tab$persistence[is.finite(tab$persistence)]) * 1.23
+    plotted <- ifelse(tab$essential, cap, tab$persistence)
+    plot(tab$initial.size, plotted, type = "n", xlim = c(0, 520), ylim = c(0, cap * 1.08),
+         xlab = "Initial assigned observations", ylab = "Persistence (outcome units)",
+         main = "Height and support differ", cex.main = 1, yaxt = "n")
+    axis(2, at = c(0, 1, 2), labels = c("0", "1", "2"), cex.axis = .78)
+    text(10, cap, "Essential", adj = c(0, .5), cex = .78)
+    abline(h = cap * .92, col = "#cbd1d3", lty = 3)
+    abline(h = .25, col = muted, lty = 2)
+    pch <- c(retained = 21, merged = 24, filtered_size = 22)[tab$status]
+    points(tab$initial.size, plotted, pch = pch, bg = colors_for(tab$row, one, "max"),
+           col = ink, cex = 1.3)
+    text(tab$initial.size, plotted, tab$row,
+         pos = ifelse(tab$status == "merged", 4, 3), cex = .8)
+    legend("right", c("Retained", "Merged", "Size-filtered"), pch = c(21, 24, 22),
+           pt.bg = "white", bty = "n", cex = .75)
+})
+```
+
+With noise, the initial counts change from `r nrow(one$max$extrema)` to
+`r nrow(noisy$max$extrema)` maxima and from `r nrow(one$min$extrema)` to
+`r nrow(noisy$min$extrema)` minima. The final counts are
+`r sum(noisy$max$extrema$retained)` maxima and
+`r sum(noisy$min$extrema$retained)` minima. Agreement in counts is not proof
+of exact recovery: the representative locations and memberships also change.
+No smoothing has been applied. If a smoothed outcome is supplied, its
+estimation settings become an additional part of the analysis.
+
+## 2. An irregularly sampled two-dimensional surface
+
+The next surface contains two broad elevated regions, a shoulder near the
+left region, two depressions, and a narrow positive feature. Coordinates are
+in the same arbitrary distance units. The tilted first Gaussian makes the
+geometry anisotropic. We evaluate the surface at 2,000 uniformly sampled
+locations in \([-3,3]^2\), without observational noise.
+
+```{r two-data, cache=TRUE}
+f2 <- function(X) {
+    bump <- function(cx, cy, sx, sy, theta = 0) {
+        u <- cos(theta) * (X[, 1] - cx) + sin(theta) * (X[, 2] - cy)
+        v <- -sin(theta) * (X[, 1] - cx) + cos(theta) * (X[, 2] - cy)
+        exp(-.5 * ((u / sx)^2 + (v / sy)^2))
+    }
+    2.4 * bump(-1.35, .7, .8, .55, pi / 9) +
+        .9 * bump(-.3, 1, .22, .22) +
+        1.8 * bump(1.3, .7, .7, .8) -
+        1.6 * bump(-.7, -1.4, .6, .6) -
+        .8 * bump(1.6, -1.6, .5, .4) +
+        1.5 * bump(0, -.6, .1, .1)
+}
+set.seed(22062)
+X2 <- matrix(runif(4000, -3, 3), ncol = 2)
+y2 <- f2(X2)
+two <- knn.basins(X2, y2, k = 25, metric = "L2",
+                  min.persistence = .3, min.basin.size = 100)
+two_linf <- knn.basins(X2, y2, k = 25, metric = "Linfty",
+                       min.persistence = .3, min.basin.size = 100)
+```
+
+```{r two-surface, echo=FALSE, fig.height=5.1, fig.cap="The specified continuous surface, evaluated on a dense display grid, with the 2,000 actual input locations overlaid as small dots. Contours and the color key use outcome units. Only the irregular observations enter knn.basins(); the display grid is not analyzed. The narrow feature near (0, -0.6) is part of the known surface.", fig.alt="A contour and color map of the two broad peaks, two depressions and narrow peak, with irregularly sampled input locations."}
+display_axis <- seq(-3, 3, length.out = 151)
+display_X <- as.matrix(expand.grid(display_axis, display_axis))
+display_z <- matrix(f2(display_X), length(display_axis))
+contours2 <- list(x = display_axis, y = display_axis, z = display_z,
+                  levels = c(-1.2, -.6, 0, .6, 1.2, 1.8, 2.4))
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op))
+    theme_par(mar = c(4, 4, 1.2, 1))
+    filled.contour(display_axis, display_axis, display_z,
+                   color.palette = function(n) hcl.colors(n, "Blue-Red 3", rev = TRUE),
+                   asp = 1, xlab = "Coordinate 1", ylab = "Coordinate 2",
+                   key.title = title(main = "Outcome", cex.main = .85),
+                   plot.axes = {
+                       axis(1); axis(2)
+                       contour(display_axis, display_axis, display_z, levels = contours2$levels,
+                               add = TRUE, col = "#263b4377", labcex = .65)
+                       points(X2, pch = 16, cex = .12, col = "#25394355")
+                   })
+})
+```
+
+```{r two-basins, echo=FALSE, fig.width=9, fig.height=6.7, fig.cap="Rows distinguish maximum-oriented and minimum-oriented basins. Columns compare initial L2 assignments, final L2 assignments, and final Linfty assignments at the same k and filtering thresholds. Contours are held fixed. Colors for Linfty extrema are matched to the nearest original L2 extremum of the same direction; numerical labels remain the actual representative rows. Gray points are size-filtered. Boundary candidates in the initial maps are features of the finite sampled neighborhood.", fig.alt="Six basin maps comparing original L2 basins with filtered L2 and Linfty basins for maxima and minima."}
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op)); par(mfrow = c(2, 3))
+    for (d in c("max", "min")) {
+        label <- if (d == "max") "Maxima" else "Minima"
+        basin_map(X2, two, d, "initial.labels", paste(label, "- initial L2"), contours2)
+        basin_map(X2, two, d, "labels", paste(label, "- final L2"), contours2)
+        basin_map(X2, two_linf, d, "labels", paste(label, "- final Linfty"), contours2, reference = two)
+    }
+})
+```
+
+```{r two-table, echo=FALSE}
+interior2 <- two$max$extrema[abs(X2[two$max$extrema$row, 1]) < 2.7 &
+                              abs(X2[two$max$extrema$row, 2]) < 2.7, ]
+knitr::kable(interior2[, c("row", "value", "persistence", "initial.size", "merged.size", "status")],
+              digits = 3, caption = "Interior maximum candidates under L2; boundary candidates remain in the complete result.")
+narrow2 <- two$max$extrema[which.min(rowSums(sweep(X2[two$max$extrema$row, ], 2, c(0, -.6), "-")^2)), ]
+```
+
+The narrow peak has `r narrow2$initial.size` initial observations and
+persistence `r fmt(narrow2$persistence)`. It survives the 0.3 persistence
+threshold but fails the 100-observation requirement. This is another known
+surface feature removed by a deliberate support requirement. The final L2
+result retains `r sum(two$max$extrema$retained)` maxima and
+`r sum(two$min$extrema$retained)` minima.
+
+L2 distance balls are circular; Linfty distance balls are axis-aligned squares.
+They can connect different pairs of observations and produce different
+assignments even when the retained counts agree. Linfty also depends on the
+chosen coordinate axes. Neither metric is automatically preferable.
+
+### Fixed k does not mean fixed spatial radius
+
+We now draw another 2,000 observations from the same domain, concentrating
+the first coordinate toward the left with a scaled Beta(2,5) distribution.
+The function and `k = 25` remain unchanged. This is a changed sampling design,
+not a repeat measurement at the original locations.
+
+```{r density-data, cache=TRUE, dependson="two-data"}
+set.seed(22063)
+X_dense <- cbind(6 * rbeta(2000, 2, 5) - 3, runif(2000, -3, 3))
+density_control <- knn.basins(X_dense, f2(X_dense), k = 25,
+                              min.persistence = .3, min.basin.size = 100)
+```
+
+```{r sampling-radius, echo=FALSE, fig.width=8.4, fig.height=4.4, fig.cap="Distance to the 25th other neighbor under L2, with a common color scale. The denser left region needs a smaller physical radius to collect 25 neighbors, while the sparse right region needs a larger radius. These are directed kNN radii; symmetrization can add longer incoming connections. Counts of assigned observations therefore measure sampling support, not geometric area.", fig.alt="Uniform and left-concentrated samples colored by a shared scale of 25th-neighbor radius."}
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op))
+    layout(matrix(c(1, 2, 3, 3), 2, 2, byrow = TRUE), heights = c(1, .16))
+    palette <- hcl.colors(128, "Viridis")
+    limits <- range(c(two$neighborhood$radius, density_control$neighborhood$radius))
+    for (i in 1:2) {
+        xx <- if (i == 1) X2 else X_dense
+        rr <- if (i == 1) two$neighborhood$radius else density_control$neighborhood$radius
+        color <- palette[pmax(1, pmin(128, 1 + floor(127 * (rr - limits[1]) / diff(limits))))]
+        theme_par(mar = c(3.1, 3.5, 2, 1), mgp = c(1.9, .6, 0), cex.axis = .85)
+        plot(xx, asp = 1, pch = 16, cex = .45, col = color, xlim = c(-3, 3), ylim = c(-3, 3),
+             xlab = "Coordinate 1", ylab = "Coordinate 2",
+             main = if (i == 1) "Uniform sampling" else "Concentrated toward the left", cex.main = .95)
+    }
+    theme_par(mar = c(2.6, 5, .1, 4), mgp = c(1.5, .4, 0))
+    image(seq(limits[1], limits[2], length.out = 128), c(0, 1), matrix(1:128, 128, 2),
+          col = palette, yaxt = "n", xlab = "25th-neighbor radius (coordinate units)", ylab = "", cex.axis = .8)
+})
+```
+
+## 3. Maunga Whau: extrema of a real terrain grid
+
+R's [`datasets::volcano` documentation](https://stat.ethz.ch/R-manual/R-devel/library/datasets/html/volcano.html)
+describes topography of Maunga Whau (Mt Eden), digitized from a map by Ross
+Ihaka, on an 87-by-61 grid with 10-m spacing. It cautions that the data should
+not be regarded as accurate. This is an illustrative terrain analysis, not
+validation against a surveyed reference surface.
+
+Each grid location becomes one row of `X`, giving 5,307 observations. The
+two coordinates below are local offsets along the matrix axes in metres;
+the figures do not assert a geographic origin or compass orientation.
+Heights and persistence are reported in the dataset's height units. The
+supplied heights are used directly, including exact ties, without smoothing.
+
+```{r terrain-data, cache=TRUE}
+terrain_grid <- datasets::volcano
+grid_index <- expand.grid(row = seq_len(nrow(terrain_grid)),
+                           column = seq_len(ncol(terrain_grid)))
+Xv <- cbind(row.offset = 10 * (grid_index$row - 1),
+             column.offset = 10 * (grid_index$column - 1))
+yv <- as.vector(terrain_grid)
+stopifnot(identical(yv, as.vector(terrain_grid[as.matrix(grid_index)])))
+terrain <- knn.basins(Xv, yv, k = 50, metric = "L2",
+                      min.persistence = 5, min.basin.size = 100)
+```
+
+```{r terrain-details, echo=FALSE}
+terrain_boundary <- boundary_extrema(terrain, Xv, "min")
+terrain_min_table <- terrain$min$extrema
+terrain_min_table$boundary <- terrain_boundary
+interior_v <- terrain_min_table[!terrain_boundary & terrain_min_table$retained, ]
+stopifnot(nrow(interior_v) == 1L)
+contours_v <- list(x = sort(unique(Xv[, 1])), y = sort(unique(Xv[, 2])), z = terrain_grid,
+                   levels = seq(100, 190, 15))
+```
+
+```{r terrain-overview, echo=FALSE, fig.width=9, fig.height=2.7, fig.cap="Left: the supplied terrain heights with contours labeled in dataset height units; the interior retained minimum is marked, and the dashed contour shows its kNN merge level. Center and right: final maximum-oriented and minimum-oriented assignments, respectively. White triangles identify retained extrema. Colors identify different basin partitions in the two directions. Offsets follow matrix axes, not a claimed geographic orientation.", fig.alt="The volcano elevation grid beside its final maximum and minimum basin maps, with an interior depression marked."}
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op)); par(mfrow = c(1, 3))
+    theme_par(mar = c(3.2, 3.2, 2.1, .7), mgp = c(1.9, .6, 0), cex.axis = .8, cex.lab = .86)
+    image(contours_v$x, contours_v$y, terrain_grid, col = hcl.colors(64, "Terrain"),
+          asp = 1, useRaster = TRUE, xlab = "Row-axis offset (m)", ylab = "Column-axis offset (m)",
+          main = "Supplied terrain heights", cex.main = .93, xaxs = "i", yaxs = "i")
+    contour(contours_v$x, contours_v$y, terrain_grid, add = TRUE, levels = contours_v$levels,
+            col = "#263b4388", labcex = .65)
+    contour(contours_v$x, contours_v$y, terrain_grid, add = TRUE,
+            levels = interior_v$merge.level, drawlabels = FALSE, lty = 2, lwd = 1.3, col = ink)
+    points(Xv[interior_v$row, 1], Xv[interior_v$row, 2], pch = 25, bg = "white", cex = 1.2)
+    mtext(sprintf("Interior %.0f; merge %.0f", interior_v$value, interior_v$merge.level), side = 3, cex = .7, line = .1)
+    basin_map(Xv, terrain, "max", "labels", "Final basins toward maxima", contours_v,
+              raster_dim = dim(terrain_grid))
+    basin_map(Xv, terrain, "min", "labels", "Final basins toward minima", contours_v,
+              raster_dim = dim(terrain_grid))
+})
+```
+
+```{r terrain-stages, echo=FALSE, fig.width=9, fig.height=2.7, fig.cap="Minimum-oriented terrain basins before merging, after persistence merging, and after size filtering. Colors remain tied to the original representative rows. Persistence merging reduces the number of basins; at this setting the minimum-size filter makes no further change. Boundary markers remain visible even when their numerical labels would fall outside the plot.", fig.alt="Three maps showing the volcano minimum basins through initial assignment, persistence merging and minimum-size filtering."}
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op)); par(mfrow = c(1, 3))
+    for (i in 1:3) basin_map(Xv, terrain, "min",
+        c("initial.labels", "persistence.labels", "labels")[i],
+        c("Initial minima", "After persistence merging", "After size filtering")[i],
+        contours_v, raster_dim = dim(terrain_grid))
+})
+```
+
+The interior minimum has height `r interior_v$value` and joins an older
+minimum at height `r interior_v$merge.level`, giving persistence
+**`r interior_v$merge.level` - `r interior_v$value` = `r interior_v$persistence`**.
+Its final basin contains `r interior_v$merged.size` observations. Raising
+the minimum size from 100 to 150 would exclude this basin despite its
+substantial vertical separation. This follows from the assigned count, not
+from an assessment of whether the depression is scientifically important.
+
+```{r terrain-table, echo=FALSE}
+knitr::kable(terrain_min_table[, c("row", "value", "merge.level", "persistence",
+                                   "plateau.size", "merged.size", "boundary", "status")],
+              digits = 0, caption = "All original terrain minima. Boundary is true if any row of the extremum plateau touches the grid boundary.")
+```
+
+Of the `r sum(terrain_min_table$retained)` retained minima,
+`r sum(terrain_min_table$retained & terrain_min_table$boundary)` touch the
+sampled boundary. Their interpretation depends on the chosen extent. The
+essential minimum has infinite persistence because no older minimum exists
+in its connected component; infinity is not a measure of statistical certainty.
+
+Regular grids have equal-distance neighbors, and the recorded heights have
+exact plateaus. `knn.basins()` breaks distance ties by row index and contracts
+connected equal-height plateaus. We preserve the stated matrix order and do
+not add jitter. Row permutations can change a tied kNN cutoff. L2/Linfty
+comparisons therefore reflect both the metric and its associated tie pattern.
+
+## Sensitivity to neighborhood scale and distance
+
+We keep outcomes and filtering thresholds fixed within each example and
+compare `k = 25, 50, 100`. The two-dimensional and terrain examples use both
+metrics. In one dimension the metrics are mathematically identical; the
+numerical check below compares them at `k = 25`.
+
+| Example | Observations | Persistence threshold | Minimum assigned size |
+|---|---:|---:|---:|
+| Exact 1D | 1,000 | 0.25 outcome units | 100 (10%) |
+| Exact 2D | 2,000 | 0.30 outcome units | 100 (5%) |
+| Terrain | 5,307 | 5 dataset height units | 100 (1.88%) |
+
+```{r sensitivity-fits, cache=TRUE, dependson=c("one-data", "two-data", "terrain-data")}
+sensitivity_inputs <- list(
+    `Exact 1D` = list(X = X1, y = y1, p = .25, metrics = "L2"),
+    `Exact 2D` = list(X = X2, y = y2, p = .3, metrics = c("L2", "Linfty")),
+    Terrain = list(X = Xv, y = yv, p = 5, metrics = c("L2", "Linfty"))
+)
+sensitivity_fits <- list()
+for (name in names(sensitivity_inputs)) {
+    input <- sensitivity_inputs[[name]]
+    for (metric in input$metrics) for (k in c(25L, 50L, 100L)) {
+        key <- paste(name, metric, k, sep = ":")
+        sensitivity_fits[[key]] <- if (name == "Exact 1D" && k == 25) one else
+            if (name == "Exact 2D" && metric == "L2" && k == 25) two else
+            if (name == "Exact 2D" && metric == "Linfty" && k == 25) two_linf else
+            if (name == "Terrain" && metric == "L2" && k == 50) terrain else
+            knn.basins(input$X, input$y, k, metric,
+                       min.persistence = input$p, min.basin.size = 100)
+    }
+}
+```
+
+```{r sensitivity-summary, include=FALSE}
+sensitivity_table <- do.call(rbind, lapply(names(sensitivity_fits), function(key) {
+    fit <- sensitivity_fits[[key]]
+    example <- strsplit(key, ":", fixed = TRUE)[[1]][1]
+    do.call(rbind, lapply(c("max", "min"), function(d) {
+        z <- fit[[d]]
+        data.frame(example = example, metric = fit$parameters$metric, k = fit$parameters$k,
+                   direction = d, initial = nrow(z$extrema), retained = sum(z$extrema$retained),
+                   unassigned.percent = 100 * mean(is.na(z$labels)),
+                   components = fit$neighborhood$n.components)
+    }))
+}))
+stage_table <- do.call(rbind, list(summary_stages(one, "Exact 1D"), summary_stages(noisy, "Noisy 1D"),
+                                 summary_stages(two, "Exact 2D"), summary_stages(terrain, "Terrain")))
+```
+
+```{r sensitivity-figure, echo=FALSE, fig.width=9, fig.height=6.1, fig.cap="Retained extrema counts (top) and percentages of unassigned observations (bottom) as k changes. Blue denotes maxima and gold denotes minima; solid circles denote L2 and dashed triangles denote Linfty. Outcomes and thresholds are fixed within each example. Coincident curves overlap; the table below reports every series. The one-dimensional panel shows L2 because the two metrics coincide there. Count agreement does not establish identical locations or memberships.", fig.alt="Six sensitivity panels reporting retained maximum and minimum counts and percentages excluded at k 25, 50 and 100."}
+local({
+    op <- par(no.readonly = TRUE); on.exit(par(op)); par(mfrow = c(2, 3), oma = c(1.2, 0, 1.9, 0))
+    for (measure in c("retained", "unassigned.percent")) for (name in names(sensitivity_inputs)) {
+        tab <- sensitivity_table[sensitivity_table$example == name, ]
+        theme_par(mar = c(3, 3.5, 1.8, .8), mgp = c(2.2, .6, 0), cex.axis = .83)
+        ymax <- if (measure == "retained") max(sensitivity_table$retained) else max(sensitivity_table$unassigned.percent)
+        plot(c(25, 100), c(0, max(1, ymax) * 1.1), type = "n", xaxt = "n",
+             xlab = "k (other neighbors)", ylab = if (measure == "retained") "Retained extrema" else "Unassigned (%)",
+             main = name, cex.main = .95)
+        axis(1, at = c(25, 50, 100))
+        for (d in c("max", "min")) for (metric in unique(tab$metric)) {
+            zz <- tab[tab$direction == d & tab$metric == metric, ]
+            color <- if (d == "max") "#216b9b" else "#b78016"
+            lines(zz$k, zz[[measure]], type = "b", col = color, lwd = 1.5,
+                   lty = if (metric == "L2") 1 else 2, pch = if (metric == "L2") 16 else 2, cex = .85)
+        }
+    }
+    mtext("Blue: maxima   Gold: minima        Circle / solid: L2   Triangle / dashed: Linfty",
+           side = 3, outer = TRUE, line = .2, cex = .8, col = ink)
+})
+```
+
+```{r sensitivity-table, echo=FALSE}
+knitr::kable(sensitivity_table, digits = 2, row.names = FALSE,
+              caption = "Numerical values behind the sensitivity figure; connected-component counts are included.")
+```
+
+The thresholds above are teaching choices, not universal recommendations.
+Changes in `k` alter connectivity as well as the local extremum test. Compare
+locations and basin overlap when tracking features across settings; raw row
+labels can change. A small unassigned fraction can still include an important
+narrow feature. Conversely, a stable feature count can conceal changing
+memberships.
+
+## Numerical checks and interpretation limits
+
+The checks accompanying this vignette use the displayed inputs and stored
+results. They verify:
+
+* conservation of all observations before size filtering and exact accounting
+  of retained and unassigned observations afterward;
+* persistence merging by following the reported parent relationships, with
+  threshold equality retained and essential extrema preserved;
+* finite merge levels using an independent threshold-connectivity search on
+  the returned neighborhoods, for every original extremum in the four main fits;
+* nearest neighbors against direct distance calculations at selected rows;
+* maximum/minimum sign reversal, one-dimensional metric equality, and the
+  alignment between terrain cells, coordinates, and outcome values;
+* recovery of the 1D function's stationary extrema using roots of its analytic
+  derivative, separately from the discrete graph construction.
+
+```{r numerical-verification, include=FALSE}
+verification <- data.frame(check = character(), cases = integer(), passed = logical())
+record_check <- function(name, cases, condition) {
+    stopifnot(isTRUE(condition))
+    verification <<- rbind(verification, data.frame(check = name, cases = cases, passed = TRUE))
+}
+all_fits <- c(list(one = one, noisy = noisy, two = two, terrain = terrain, density = density_control), sensitivity_fits)
+for (fit in all_fits) for (d in c("max", "min")) {
+    result <- fit[[d]]; tab <- result$extrema; n <- length(fit$y)
+    stopifnot(sum(tab$initial.size) == n, sum(tab$merged.size) == n,
+              !anyNA(result$initial.labels), !anyNA(result$persistence.labels))
+    for (i in seq_len(nrow(tab))) {
+        stopifnot(tab$initial.size[i] == sum(result$initial.labels == tab$row[i]),
+                  tab$merged.size[i] == sum(result$persistence.labels == tab$row[i]))
+        root <- i
+        while (!tab$essential[root] && tab$persistence[root] < fit$parameters$min.persistence) {
+            root <- match(tab$parent.row[root], tab$row)
+            stopifnot(!is.na(root))
+        }
+        stopifnot(tab$persistence.root[i] == tab$row[root])
+    }
+    expected <- tab$persistence.root[match(result$initial.labels, tab$row)]
+    stopifnot(identical(result$persistence.labels, expected))
+    size <- tab$merged.size[match(expected, tab$row)]
+    expected[size < fit$parameters$min.basin.size] <- NA_integer_
+    stopifnot(identical(result$labels, expected),
+              identical(sort(unlist(result$basins, use.names = FALSE)), which(!is.na(result$labels))),
+              all(tab$merged.size[tab$retained] >= fit$parameters$min.basin.size))
+}
+record_check("Assignment and filtering accounting", 2L * length(all_fits), TRUE)
+
+# Independent oracle: binary search the observed thresholds, using BFS to
+# determine when this peak reaches any elder. No merge-tree code is called.
+oracle_merge <- function(graph, field, peak) {
+    n <- length(field)
+    elder <- field > field[peak] | (field == field[peak] & seq_len(n) < peak)
+    same_component <- graph$component == graph$component[peak]
+    if (!any(elder & same_component)) return(NA_real_)
+    reaches_elder <- function(level) {
+        allowed <- field >= level
+        seen <- rep(FALSE, n); seen[peak] <- TRUE
+        queue <- integer(n); queue[1] <- peak; head <- 1L; tail <- 1L
+        while (head <= tail) {
+            v <- queue[head]; head <- head + 1L
+            if (elder[v]) return(TRUE)
+            neighbors <- graph$adj.list[[v]]
+            add <- neighbors[allowed[neighbors] & !seen[neighbors]]
+            if (length(add)) {
+                seen[add] <- TRUE
+                queue[tail + seq_along(add)] <- add
+                tail <- tail + length(add)
+            }
+        }
+        FALSE
+    }
+    levels <- sort(unique(field[field <= field[peak] & same_component]), decreasing = TRUE)
+    lo <- 1L; hi <- length(levels)
+    while (lo < hi) {
+        mid <- (lo + hi) %/% 2L
+        if (reaches_elder(levels[mid])) hi <- mid else lo <- mid + 1L
+    }
+    levels[lo]
+}
+oracle_count <- 0L
+for (fit in list(one, noisy, two, terrain)) for (d in c("max", "min")) {
+    tab <- fit[[d]]$extrema; field <- if (d == "max") fit$y else -fit$y
+    for (i in seq_len(nrow(tab))) {
+        level <- oracle_merge(fit$neighborhood, field, tab$row[i])
+        expected <- if (d == "max") tab$merge.level[i] else -tab$merge.level[i]
+        stopifnot(isTRUE(all.equal(level, expected, tolerance = 1e-12)))
+        oracle_count <- oracle_count + 1L
+    }
+}
+record_check("Independent threshold-connectivity merge levels", oracle_count, TRUE)
+
+distance_count <- 0L
+for (case in list(list(X1, one), list(X2, two), list(X2, two_linf), list(Xv, terrain))) {
+    X <- case[[1]]; fit <- case[[2]]
+    for (i in unique(as.integer(seq(1, nrow(X), length.out = 12)))) {
+        delta <- abs(sweep(X, 2, X[i, ], "-"))
+        distance <- if (fit$parameters$metric == "L2") sqrt(rowSums(delta^2)) else apply(delta, 1, max)
+        distance[i] <- Inf
+        expected <- order(distance, seq_len(nrow(X)))[seq_len(fit$parameters$k)]
+        # For random non-tied distances, direct and scaled L2 arithmetic agree
+        # in rank. Integer terrain differences give exact cutoff tie groups.
+        stopifnot(identical(fit$neighborhood$knn.index[i, ], expected),
+                  isTRUE(all.equal(fit$neighborhood$knn.distance[i, ], distance[expected], tolerance = 1e-12)))
+        distance_count <- distance_count + 1L
+    }
+}
+record_check("Direct-distance neighbor rows", distance_count, TRUE)
+one_linf <- knn.basins(X1, y1, 25, "Linfty", min.persistence = .25, min.basin.size = 100)
+record_check("L2 equals Linfty in one dimension", 1L,
+              identical(one$max, one_linf$max) && identical(one$min, one_linf$min))
+opposite <- knn.basins(X2, -y2, 25, direction = "max", min.persistence = .3, min.basin.size = 100)
+record_check("Minima equal maxima of the negated 2D field", 1L,
+              identical(two$min$labels, opposite$max$labels) &&
+              isTRUE(all.equal(two$min$extrema$persistence, opposite$max$extrema$persistence)))
+f1_derivative <- function(x) rowSums(matrix(vapply(seq_len(nrow(components)), function(j) {
+    with(components[j, ], -amplitude * (x - center) / width^2 * exp(-.5 * ((x - center) / width)^2))
+}, numeric(length(x))), nrow = length(x)))
+reference_grid <- seq(0, 10, length.out = 20001)
+sgn <- sign(f1_derivative(reference_grid))
+crossings <- which(diff(sgn) != 0)
+stationary <- vapply(crossings, function(i)
+    uniroot(f1_derivative, reference_grid[c(i, i + 1)], tol = 1e-12)$root, numeric(1))
+is_maximum <- f1_derivative(stationary - 1e-5) > 0
+for (d in c("max", "min")) {
+    truth <- if (d == "max") stationary[is_maximum] else c(0, stationary[!is_maximum], 10)
+    actual <- sort(X1[one[[d]]$extrema$row, 1])
+    stopifnot(length(actual) == length(truth), max(abs(actual - sort(truth))) <= diff(X1[1:2, 1]))
+}
+record_check("1D continuous extrema locations within one sample interval", length(stationary) + 2L, TRUE)
+record_check("Terrain coordinate/outcome alignment", length(yv),
+              identical(yv, as.vector(terrain_grid[as.matrix(grid_index)])))
+record_check("Known narrow synthetic peaks survive persistence but fail size", 2L,
+              nrow(narrow1) == 1L && narrow1$persistence > .25 && narrow1$merged.size < 100 &&
+              narrow2$status == "filtered_size" && narrow2$persistence > .3)
+record_check("Interior terrain depression has height 148 and merge level 164", 1L,
+              interior_v$value == 148 && interior_v$merge.level == 164 && interior_v$persistence == 16)
+numerical_checks_passed <- TRUE
+```
+
+```{r verification-table, echo=FALSE}
+knitr::kable(verification, row.names = FALSE,
+              caption = "Executed checks. Cases have different meanings across rows and are not combined into an accuracy percentage.")
+```
+
+These checks establish consistency of the implementation and the reported
+examples. They do not establish statistical significance, optimal thresholds,
+or robustness on high-dimensional noisy data. Persistence measures separation
+in the supplied outcome. Basin size measures assigned sample support.
+Boundary effects, sampling density, metric choice, and any upstream smoothing
+remain part of the scientific interpretation.
+
+The complete source is installed with the vignette. For method details, see
+`help("knn.basins", package = "gflow")`; for graph-input methods, see the
+[canonical basin workflow](basin_complex_workflow_vignette.html).
+
+<details>
+<summary>Reproduction information</summary>
+
+The random seeds are 22061 (1D noise), 22062 (uniform 2D locations), and
+22063 (nonuniform 2D locations). All fits use the original coordinates and
+the displayed outcomes. Cached chunks include the package code/build identity
+and runtime identity, so changed implementations do not silently reuse results.
+
+```{r reproducibility, echo=FALSE}
+knitr::kable(data.frame(package = "gflow", version = as.character(packageVersion("gflow")),
+                       source_revision = knn_build_identity$source.revision,
+                       dirty_source = knn_build_identity$source.code.dirty,
+                       build_identity = knn_build_identity$build.id), row.names = FALSE)
+sessionInfo()
+```
+
+</details>

@@ -5,7 +5,8 @@ for (topic in c("gflow", "gflow-package", "gflow-migration", "create.basin.compl
     if (length(help(topic, package = "gflow")) != 1L) stop("Missing installed help: ", topic)
 }
 guides <- c("function-guide", "example-graphs-and-fields",
-            "basin_complex_workflow_vignette", "noisy_circle_core_workflow_vignette")
+            "basin_complex_workflow_vignette", "noisy_circle_core_workflow_vignette",
+            "knn-basins")
 index <- vignette(package = "gflow")$results
 stopifnot(all(guides %in% index[, "Item"]))
 for (guide in guides) {
@@ -22,4 +23,4 @@ local({
     source(system.file("doc", "function-guide.R", package = "gflow"),
            local = new.env(parent = globalenv()))
 })
-cat("Installed help, all four guides, and the introductory workflow passed.\n")
+cat("Installed help, all five guides, and the introductory workflow passed.\n")

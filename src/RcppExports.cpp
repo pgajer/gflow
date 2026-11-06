@@ -10,6 +10,18 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// rcpp_knn_basins_neighbors
+Rcpp::List rcpp_knn_basins_neighbors(const Rcpp::NumericMatrix& X, const int k, const bool linfty);
+RcppExport SEXP _gflow_rcpp_knn_basins_neighbors(SEXP XSEXP, SEXP kSEXP, SEXP linftySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const int >::type k(kSEXP);
+    Rcpp::traits::input_parameter< const bool >::type linfty(linftySEXP);
+    rcpp_result_gen = Rcpp::wrap(rcpp_knn_basins_neighbors(X, k, linfty));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rcpp_local_pca_chart
 List rcpp_local_pca_chart(const NumericMatrix& X_support, const NumericVector& center, const int chart_dim, const std::string& center_mode, const std::string& dim_rule, const double eigen_tolerance, Nullable<NumericVector> weights, const bool rebase_to_anchor, const bool orient_basis);
 RcppExport SEXP _gflow_rcpp_local_pca_chart(SEXP X_supportSEXP, SEXP centerSEXP, SEXP chart_dimSEXP, SEXP center_modeSEXP, SEXP dim_ruleSEXP, SEXP eigen_toleranceSEXP, SEXP weightsSEXP, SEXP rebase_to_anchorSEXP, SEXP orient_basisSEXP) {

@@ -7,6 +7,10 @@
 #' part of this package.
 #'
 #' @section Start here:
+#' For a data matrix and outcome, use \code{\link{knn.basins}} to identify extrema and
+#' basins using L2 or Linfty neighborhoods without dimensionality reduction.
+#' Its persistence merging and assigned-size filter are separate controls.
+#'
 #' Start with [create.basin.complex()] and inspect the result with
 #' [summary.basin_complex()] and the `get.basin.*()` accessors. The small
 #' example below needs only the installed package: its two peaks merge at
@@ -14,7 +18,7 @@
 #' not statistical significance. Use `plot(bc, view = "merge_tree")` to explore
 #' the hierarchy, or change the field and reconstruct it.
 #'
-#' The documented source-build installation generates help and all four
+#' The documented source-build installation generates help and all five
 #' vignettes. A direct Git installation that skips documentation generation
 #' may lack them; follow the repository's installation instructions to build
 #' a complete source archive. Package loading does not open guides automatically.
@@ -24,6 +28,8 @@
 #' complete API catalog, and `vignette("example-graphs-and-fields", package =
 #' "gflow")` for reproducible graph/field recipes. The canonical basin and
 #' noisy-circle workflow vignettes provide longer analyses.
+#' The `knn-basins` vignette follows synthetic 1D and 2D fields and real terrain
+#' through matrix-input extrema detection, persistence merging, and size filtering.
 #' See \code{\link{gflow-migration}} for installed migration guidance.
 #'
 #' @section Basin and flow objects:

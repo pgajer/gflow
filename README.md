@@ -27,7 +27,7 @@ make install-user
 ```
 
 This installs missing core/build R dependencies, generates function help,
-builds all four vignettes, installs the source archive, and checks the installed
+builds all five vignettes, installs the source archive, and checks the installed
 introduction. It uses your current R library configuration. For a library you
 control, create a directory and set `R_LIBS_USER` before running the command.
 Optional viewers and archived modeling packages are not needed for this route.
@@ -88,6 +88,7 @@ against vertex index. A drawing does not change the analysis.
 | Task | Start with | Guide |
 |---|---|---|
 | Choose a basin definition | `create.basin.complex()` | [Canonical workflow](https://pgajer.github.io/gflow/articles/basin_complex_workflow_vignette.html) |
+| Find extrema directly from X and y | `knn.basins()` | [Synthetic fields and real terrain](https://pgajer.github.io/gflow/articles/knn-basins.html) |
 | Understand overlap, cuts, and refinement | `get.basin.*()`, `cut()`, `summary()` | [Paths, grids, and disconnected graphs](https://pgajer.github.io/gflow/articles/example-graphs-and-fields.html) |
 | Follow trajectories or extend coordinates | `construct.madag()`, `compute.harmonic.extension()` | [Task map](https://pgajer.github.io/gflow/articles/function-guide.html) |
 | Compare local changes between fields | `lcor()`, `lslope()`, `lslope.neighborhood()` | [Noisy-circle workflow](https://pgajer.github.io/gflow/articles/noisy_circle_core_workflow_vignette.html) |
@@ -96,7 +97,7 @@ against vertex index. A drawing does not change the analysis.
 [Full task and API catalog](https://pgajer.github.io/gflow/articles/function-guide.html) ·
 [Guide sources](https://github.com/pgajer/gflow/tree/main/vignettes) · [Release notes](https://github.com/pgajer/gflow/blob/main/NEWS.md)
 
-All four guides are installed locally. Use `browseVignettes("gflow")` for the
+All five guides are installed locally. Use `browseVignettes("gflow")` for the
 index and `help("gflow-migration", package = "gflow")` for migration advice.
 Loading the package stays quiet.
 

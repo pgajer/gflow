@@ -76,6 +76,7 @@
 "S_get_path_data","Call","CORE-PRIVATE","R/centered_paths.R","src/centered_paths.cpp","retained"
 "S_ugg_get_path_data","Call","CORE-PRIVATE","R/centered_paths.R","src/centered_paths.cpp","retained"
 "_gflow_rcpp_local_pca_chart","Call","CORE-PRIVATE","R/RcppExports.R","src/RcppExports.cpp","retained"
+"_gflow_rcpp_knn_basins_neighbors","Call","CORE-PRIVATE","R/RcppExports.R","src/RcppExports.cpp","retained"
 "S_ecdf","Call","CORE-PRIVATE","R/stats_utils.R","src/cpp_stats_utils.cpp","retained"
 "S_rlaplace","Call","CORE-PRIVATE","R/random_sampling.R","src/random_sampling.cpp","retained"
 "S_set_function_values","Call","CORE-PRIVATE","R/nerve_cx.R","src/nerve_cx_r.cpp","retained"
