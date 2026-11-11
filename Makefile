@@ -42,6 +42,14 @@ check-public-content:
 test-public-content:
 	@python3 tools/tests/test-public-content.py
 
+# Release and website builds use the generated files supplied with the sources.
+.PHONY: build-prepared
+build-prepared: check-public-content check-r-toolchain
+	$(RSCRIPT_RUN) tools/check_prepared_sources.R
+	$(R_RUN) CMD build .
+	python3 tools/check-public-content.py --archive "$(TARBALL)"
+	python3 tools/check-package-size.py "$(TARBALL)"
+
 build: check-public-content clean document manifest
 	find src -name "*.o" -delete
 	find src -name "*.so" -delete

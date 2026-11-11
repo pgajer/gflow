@@ -57,8 +57,11 @@ jobs:
             any::knitr
             any::rmarkdown
           dependencies: 'NA'
-      - name: Install with generated help and vignettes
-        run: make install-user
+      - name: Install prepared sources with help and vignettes
+        run: |
+          make build-prepared R_ENV="env -u R_HOME"
+          R CMD INSTALL gflow_*.tar.gz
+          Rscript --vanilla tools/check_installed_guides.R
       - name: Build website from the installed package
         run: make website R_ENV="env -u R_HOME"
       - uses: actions/configure-pages@v5

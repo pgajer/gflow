@@ -2,6 +2,7 @@ name: Package checks
 on:
   push:
     branches: [main]
+    paths-ignore: [cran-comments.md]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -64,9 +65,9 @@ jobs:
             any::rmarkdown
             any::testthat
           dependencies: 'NA'
-      - name: Generate, build and audit
+      - name: Build prepared sources and audit
         run: |
-          make build R_ENV="env -u R_HOME"
+          make build-prepared R_ENV="env -u R_HOME"
           make audit-api-guide audit-final-acceptance R_ENV="env -u R_HOME"
       - name: Check built package
         run: R CMD check --no-manual gflow_*.tar.gz
