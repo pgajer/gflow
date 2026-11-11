@@ -106,7 +106,8 @@ dev/geodesic-distance-estimation/**/*.RDS
 dev/phate-graph-comparison/report/lib/
 dev/**/*.log
 dev/**/.DS_Store
-man/
+man/*
+!man/*.Rd
 inst/*/
 !inst/examples/
 !inst/examples/**
@@ -115,6 +116,9 @@ inst/extdata/*
 !inst/extdata/gflow-code-manifest.tsv
 !inst/extdata/vignette-results/
 !inst/extdata/vignette-results/knn-basins.rds
+!inst/extdata/retina_vignette/
+inst/extdata/retina_vignette/*
+!inst/extdata/retina_vignette/README.md
 !inst/shiny/
 !inst/shiny/**
 presentations/

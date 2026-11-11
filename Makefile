@@ -44,7 +44,7 @@ test-public-content:
 
 # Release and website builds use the generated files supplied with the sources.
 .PHONY: build-prepared
-build-prepared: check-public-content check-r-toolchain
+build-prepared: check-public-content check-r-toolchain audit-api-guide
 	$(RSCRIPT_RUN) tools/check_prepared_sources.R
 	$(R_RUN) CMD build .
 	python3 tools/check-public-content.py --archive "$(TARBALL)"
