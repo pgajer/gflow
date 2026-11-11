@@ -2,7 +2,7 @@
 
 From a cloned source checkout, run `make install-user`. This uses your current
 R libraries, installs missing core and documentation-building dependencies,
-regenerates Rd help, builds vignettes, installs the built archive, and checks
+uses the included Rd help, builds vignettes, installs the built archive, and checks
 installed help and the introductory workflow. R, GNU make, a C++17 compiler,
 and Pandoc must be available. RStudio includes Pandoc; otherwise install it
 separately and put it on `PATH`.
@@ -11,7 +11,8 @@ For explicit control, the equivalent commands are:
 
 ```sh
 Rscript --vanilla tools/install_build_dependencies.R
-make install R_ENV="env -u R_HOME"
+make build-prepared R_ENV="env -u R_HOME"
+R CMD INSTALL gflow_0.2.0.tar.gz
 Rscript --vanilla tools/check_installed_guides.R
 ```
 
@@ -25,10 +26,14 @@ hop graphs and canonical overlap cells. Future dependency changes need the
 same checks. Optional 3D viewing requires ivue >= 0.1.0; see its
 [installation guide](https://pgajer.github.io/ivue/).
 
-`make build` produces `gflow_0.2.0.tar.gz` with generated help and all five
+`make build-prepared` produces `gflow_0.2.0.tar.gz` with the included help and all five
 guides. Once the required dependencies are installed, this archive can also be
 installed using `R CMD INSTALL gflow_0.2.0.tar.gz`. Direct Git/local installers
-that do not regenerate Rd and build vignettes are not the complete-help route.
+that do not build vignettes are not the complete-help route.
+
+For development, `make document` regenerates Rd help. Changes to computational
+sources or the vignette require an updated source manifest and regenerated
+results using `vignettes/precompute-knn-basins.R` before a prepared build.
 
 After installation:
 

@@ -113,7 +113,8 @@ preview-knn-basins:
 # User installation keeps the same libraries as the dependency bootstrap.
 install-user:
 	Rscript --vanilla tools/install_build_dependencies.R
-	$(MAKE) install R_ENV="env -u R_HOME"
+	$(MAKE) build-prepared R_ENV="env -u R_HOME"
+	R CMD INSTALL $(TARBALL)
 	Rscript --vanilla tools/check_installed_guides.R
 
 showcase:

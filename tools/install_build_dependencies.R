@@ -16,4 +16,4 @@ if (!rmarkdown::pandoc_available()) {
 if (packageVersion("dgraphs") < "0.4.0") {
     stop("dgraphs >= 0.4.0 is required. Update dgraphs in the selected R library.")
 }
-cat("Build dependencies and Pandoc are available. Next: make install R_ENV=\"env -u R_HOME\"\n")
+cat("Build dependencies and Pandoc are available for a prepared-source build.\n")
