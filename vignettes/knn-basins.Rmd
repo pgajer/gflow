@@ -19,7 +19,11 @@ if (!recompute) {
     results_file <- if (exists("knn_results_file")) knn_results_file else
         system.file("extdata", "vignette-results", "knn-basins.rds", package = "gflow")
     stored_results <- readRDS(results_file)
-    source_md5 <- unname(tools::md5sum(knitr::current_input(dir = TRUE)))
+    vignette_source <- knitr::current_input(dir = TRUE)
+    # R can run the extracted vignette code outside a knitr render.
+    if (!length(vignette_source)) vignette_source <-
+        system.file("doc", "knn-basins.Rmd", package = "gflow", mustWork = TRUE)
+    source_md5 <- unname(tools::md5sum(vignette_source))
     if (!identical(source_md5, stored_results$provenance$vignette.md5) ||
         !identical(readLines(system.file("extdata", "gflow-code-manifest.tsv", package = "gflow")),
                    stored_results$provenance$code.manifest))
