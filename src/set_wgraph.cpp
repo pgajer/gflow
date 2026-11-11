@@ -903,9 +903,11 @@ SEXP S_compute_edge_weight_deviations(
     {
         const R_xlen_t n_abs = (R_xlen_t)deviations.absolute_deviations.size();
         SEXP abs_dev = PROTECT(Rf_allocVector(REALSXP, n_abs));
-        std::copy(deviations.absolute_deviations.begin(),
-                  deviations.absolute_deviations.end(),
-                  REAL(abs_dev));
+        if (!deviations.absolute_deviations.empty()) {
+            std::copy(deviations.absolute_deviations.begin(),
+                      deviations.absolute_deviations.end(),
+                      REAL(abs_dev));
+        }
         SET_VECTOR_ELT(result, 0, abs_dev);
         UNPROTECT(1); // abs_dev
     }
@@ -914,9 +916,11 @@ SEXP S_compute_edge_weight_deviations(
     {
         const R_xlen_t n_rel = (R_xlen_t)deviations.relative_deviations.size();
         SEXP rel_dev = PROTECT(Rf_allocVector(REALSXP, n_rel));
-        std::copy(deviations.relative_deviations.begin(),
-                  deviations.relative_deviations.end(),
-                  REAL(rel_dev));
+        if (!deviations.relative_deviations.empty()) {
+            std::copy(deviations.relative_deviations.begin(),
+                      deviations.relative_deviations.end(),
+                      REAL(rel_dev));
+        }
         SET_VECTOR_ELT(result, 1, rel_dev);
         UNPROTECT(1); // rel_dev
     }

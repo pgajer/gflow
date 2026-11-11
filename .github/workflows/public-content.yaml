@@ -1,0 +1,19 @@
+name: Public content
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  content:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Test content detector
+        run: python tools/tests/test-public-content.py
+      - name: Check public repository content
+        run: python tools/check-public-content.py

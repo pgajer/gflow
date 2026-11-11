@@ -342,7 +342,9 @@ SEXP S_graph_mad(SEXP s_graph, SEXP s_y) {
     }
 
     // Copy results
-    std::copy(result.begin(), result.end(), REAL(s_result));
+    if (!result.empty()) {
+        std::copy(result.begin(), result.end(), REAL(s_result));
+    }
 
     UNPROTECT(1);
     return s_result;

@@ -207,14 +207,24 @@ static SEXP vertex_metrics_to_R(const vertex_metrics_t& metrics) {
     SEXP r_p_mean_hopk = PROTECT(Rf_allocVector(REALSXP, n));
     SEXP r_p_deg = PROTECT(Rf_allocVector(REALSXP, n));
 
-    std::copy(metrics.mean_nbrs_dist.begin(), metrics.mean_nbrs_dist.end(), REAL(r_mean_nbrs));
-    std::copy(metrics.mean_hopk_dist.begin(), metrics.mean_hopk_dist.end(), REAL(r_mean_hopk));
+    if (!metrics.mean_nbrs_dist.empty()) {
+        std::copy(metrics.mean_nbrs_dist.begin(), metrics.mean_nbrs_dist.end(), REAL(r_mean_nbrs));
+    }
+    if (!metrics.mean_hopk_dist.empty()) {
+        std::copy(metrics.mean_hopk_dist.begin(), metrics.mean_hopk_dist.end(), REAL(r_mean_hopk));
+    }
     for (R_xlen_t i = 0; i < n; ++i) {
         INTEGER(r_deg)[i] = metrics.deg[static_cast<size_t>(i)];
     }
-    std::copy(metrics.p_mean_nbrs_dist.begin(), metrics.p_mean_nbrs_dist.end(), REAL(r_p_mean_nbrs));
-    std::copy(metrics.p_mean_hopk_dist.begin(), metrics.p_mean_hopk_dist.end(), REAL(r_p_mean_hopk));
-    std::copy(metrics.p_deg.begin(), metrics.p_deg.end(), REAL(r_p_deg));
+    if (!metrics.p_mean_nbrs_dist.empty()) {
+        std::copy(metrics.p_mean_nbrs_dist.begin(), metrics.p_mean_nbrs_dist.end(), REAL(r_p_mean_nbrs));
+    }
+    if (!metrics.p_mean_hopk_dist.empty()) {
+        std::copy(metrics.p_mean_hopk_dist.begin(), metrics.p_mean_hopk_dist.end(), REAL(r_p_mean_hopk));
+    }
+    if (!metrics.p_deg.empty()) {
+        std::copy(metrics.p_deg.begin(), metrics.p_deg.end(), REAL(r_p_deg));
+    }
 
     SET_VECTOR_ELT(r_list, 0, r_mean_nbrs);
     SET_STRING_ELT(r_names, 0, Rf_mkChar("mean.nbrs.dist"));

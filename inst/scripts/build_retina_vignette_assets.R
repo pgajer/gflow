@@ -42,6 +42,16 @@ build.retina.pseudotime.long <- function(df) {
   do.call(rbind, out)
 }
 
+retina.source.reference <- function(source_path, source_root, source_kind) {
+  prefix <- paste0(sub("/+$", "", source_root), "/")
+  paths <- strsplit(source_path, "; ", fixed = TRUE)[[1L]]
+  if (!all(startsWith(paths, prefix))) {
+    stop("Asset sources must be inside their declared source root.")
+  }
+  paste(paste0(source_kind, "/", substring(paths, nchar(prefix) + 1L)),
+        collapse = "; ")
+}
+
 build.retina.asset.manifest <- function(asset.rows, manifest.path) {
   manifest <- do.call(rbind, lapply(asset.rows, function(x) {
     data.frame(
@@ -52,7 +62,8 @@ build.retina.asset.manifest <- function(asset.rows, manifest.path) {
       source_kind = x$source_kind,
       size_bytes = as.numeric(file.info(x$output_path)$size),
       md5 = unname(tools::md5sum(x$output_path)),
-      generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+      generated_at = if (is.null(x$generated_at))
+        format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z") else x$generated_at,
       stringsAsFactors = FALSE
     )
   }))
@@ -64,11 +75,11 @@ build_retina_vignette_assets <- function(
   package_root = NULL,
   cell_cycle_dir = Sys.getenv(
     "GFLOW_RETINA_CELL_CYCLE_DIR",
-    unset = "/Users/pgajer/current_projects/cell_cycle"
+    unset = ""
   ),
   retina_example_dir = Sys.getenv(
     "GFLOW_RETINA_EXAMPLE_DIR",
-    unset = "/Users/pgajer/current_projects/gflow_examples/retina_cell_cycle"
+    unset = ""
   ),
   retina_run_id = Sys.getenv(
     "GFLOW_RETINA_RUN_ID",
@@ -83,6 +94,10 @@ build_retina_vignette_assets <- function(
     package_root <- normalizePath(package_root, winslash = "/", mustWork = TRUE)
   }
 
+  if (!nzchar(cell_cycle_dir) || !nzchar(retina_example_dir)) {
+    stop("Supply cell_cycle_dir and retina_example_dir, or set ",
+         "GFLOW_RETINA_CELL_CYCLE_DIR and GFLOW_RETINA_EXAMPLE_DIR.")
+  }
   cell_cycle_dir <- normalizePath(path.expand(cell_cycle_dir), winslash = "/", mustWork = TRUE)
   retina_example_dir <- normalizePath(path.expand(retina_example_dir), winslash = "/", mustWork = TRUE)
   retina_run_root <- normalizePath(
@@ -103,6 +118,10 @@ build_retina_vignette_assets <- function(
 
   asset.rows <- list()
   add.asset <- function(asset_id, asset_type, relative_path, source_path, source_kind) {
+    source.root <- switch(source_kind,
+      cell_cycle = cell_cycle_dir, retina_example = retina_example_dir,
+      stop("Unknown asset source kind: ", source_kind))
+    source_path <- retina.source.reference(source_path, source.root, source_kind)
     asset.rows[[length(asset.rows) + 1L]] <<- list(
       asset_id = asset_id,
       asset_type = asset_type,

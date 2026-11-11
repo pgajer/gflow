@@ -1,56 +1,26 @@
-# omp_compat.h include placement
+# OpenMP compatibility header placement
 
-Keep `omp_compat.h` **early**, not last.
+Include `inst/include/gflow/omp_compat.h` before any header that may include
+`omp.h`. The compatibility header removes conflicting `match` and `check`
+macros before including the OpenMP declarations.
 
-### Why
-
-The whole point of `omp_compat.h` is to **undef any troublesome macros (like `match`) *before* `<omp.h>` is parsed**, and then include `<omp.h>` safely (or provide stubs when OpenMP is off). If you include it late, some other header (or your own) might already have included `<omp.h>` or used OpenMP pragmas — at which point the macro collision has already happened.
-
-### Recommended pattern
-
-1. **Never include `<omp.h>` directly anywhere.** Only include your wrapper.
-2. Put this at (or very near) the **top of any .cpp/.hpp that uses OpenMP**:
+In gflow-owned sources, use:
 
 ```cpp
-#include "omp_compat.h"   // must come before anything that might include <omp.h>
+#include "omp_compat.h"
 ```
 
-3. In `omp_compat.h`:
+The header provides `gflow_get_max_threads()`, `gflow_get_thread_num()` and
+other `gflow_*` wrappers. When OpenMP is disabled, its serial implementations
+report one thread and make thread-setting calls no-ops. Use these wrappers
+for code that must also compile without OpenMP.
 
-```cpp
-#pragma once
+To inspect direct includes:
 
-// Kill problematic macros before <omp.h> is seen
-#ifdef match
-#  undef match
-#endif
-#ifdef check       // some SDKs define this one too; harmless to guard
-#  undef check
-#endif
-
-#if defined(_OPENMP)
-  #include <omp.h>
-#else
-  // tiny stubs so you can call these without #ifdefs elsewhere
-  inline int  omp_get_max_threads() { return 1; }
-  inline int  omp_get_thread_num()  { return 0; }
-  inline void omp_set_num_threads(int) {}
-#endif
+```sh
+rg -n '#include[[:space:]]*<omp\.h>' src inst/include/gflow
 ```
 
-### Sanity checks
-
-* Make sure nothing includes `<omp.h>` directly:
-
-  ```bash
-  grep -RIn '^[[:space:]]*#include[[:space:]]*<omp\.h>' src inst/include
-  ```
-
-  If you find hits, replace them with `#include "omp_compat.h"`.
-
-* If you want to be extra safe, you can have `omp_compat.h` define a marker and fail builds that include `<omp.h>` directly afterwards, but the grep is usually enough.
-
-### TL;DR
-
-Your instinct to include project headers first is fine — **as long as `omp_compat.h` is included before any code that might include `<omp.h>` or use OpenMP pragmas.** Don’t move it to the end; keep it at the top (or make other headers that rely on OpenMP include it themselves at the top).
-
+For gflow-owned callers, route direct OpenMP includes through the compatibility
+header. Keep the compatibility header itself as the point that includes
+`omp.h`; bundled third-party headers follow their own include conventions.

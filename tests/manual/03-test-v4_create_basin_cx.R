@@ -2,24 +2,8 @@
 ##
 ## based on the following past work -> ./R_correctness_tests/test_v4_create_basin_cx.R
 ##
-## [~/current_projects/msr2]% find . -type f -name "*.R" -exec grep -lq 'harmonic' {} \; -print | xargs ls -lht
-## find . -type f -name "*.R" -exec grep -lq 'harmonic' {} \; -print | xargs ls -lht
-## -rw-r--r--  1 pgajer  staff    37K Jun 24 16:29 ./R/gflow_cx_utils.R
-## -rw-r--r--  1 pgajer  staff    23K May 16 14:22 ./R/gflow_cx.R
-## -rw-r--r--  1 pgajer  staff    13K May 16 14:22 ./R_correctness_tests/test_v4_create_basin_cx.R
-## -rw-r--r--  1 pgajer  staff    13K May 16 12:32 ./R_correctness_tests/test_v3_create_basin_cx.R
-## -rw-r--r--  1 pgajer  staff   109K May 15 14:48 ./R/basin_cx.R
-## -rw-r--r--  1 pgajer  staff   9.7K May 15 14:16 ./R_correctness_tests/test_v2_create_basin_cx.R
-## -rw-r--r--  1 pgajer  staff    67K May 13 12:53 ./R_correctness_tests/test_create_basin_cx.R
-## -rw-r--r--  1 pgajer  staff    84K May  2 03:33 ./R/Archives/gflow_basins_M2.R
-## -rw-r--r--  1 pgajer  staff    19K May  1 09:52 ./R/harmonic_smoother.R
-## -rw-r--r--  1 pgajer  staff    37K Apr 30 11:14 ./R/Archives/gflow_basins_A30.R
-## -rw-r--r--  1 pgajer  staff   8.4K Apr 29 09:38 ./R_correctness_tests/test_find_local_extrema.R
-## -rw-r--r--  1 pgajer  staff    15K Apr 25 19:50 ./R/amagelo.R
-
-## ---------------------------------------------------------------------------------------------
-## gflow adaptation of ~/current_projects/msr2/R_correctness_tests/test_v4_create_basin_cx.R
-## ---------------------------------------------------------------------------------------------
+# Adapted from msr2's R_correctness_tests/test_v4_create_basin_cx.R.
+# Historical external input snapshots are supplied explicitly below.
 
 f1 <- create.gaussian.mixture(A1 = 0.25, A2 = 1, sigma = 0.5)
 axis.n.pts <- 100
@@ -78,9 +62,11 @@ graphs.stats <- summary(graphs.res)
 ##   9 10       1  1472        5.89          1         10  0.98820
 
 ## timestamp <- generate.timestamp()
-## file <- "~/current_projects/msr2/data/2d_gm_example__"
+## file <- file.path(Sys.getenv("GFLOW_MANUAL_OUTPUT"), "2d_gm_example__")
 ## file <- paste0(file, timestamp, ".rda")
-file <- "~/current_projects/msr2/data/2d_gm_example__2025_05_13_093816.rda"
+file <- Sys.getenv("GFLOW_MIXTURE_INPUT")
+stopifnot(nzchar(file), file.exists(file))
+# Original input snapshot: 2d_gm_example__2025_05_13_093816.rda
 ## save(f1.res, X, y.smooth, y, eps, sigma, k.min, k.max, graphs.res, graph.idx, graph, file = file)
 load(file)
 
@@ -395,10 +381,10 @@ for (i in 4:9) {
     cat("  Time:", round(k.timing[i], 2), "sec\n\n")
 }
 
-## out.dir = "~/current_projects/ZB/analysis_output/asv"
+## out.dir = Sys.getenv("GFLOW_MANUAL_OUTPUT")
 ## (file <- paste0(out.dir, "zambia_5k_lo_errors.rda"))
 ## save(lo.errors, file = file)
-## "~/current_projects/ZB/analysis_output/asvzambia_5k_lo_errors.rda"
+## Original output snapshot: asvzambia_5k_lo_errors.rda
 
 plot(lo.errors, type = "b")
 
@@ -454,10 +440,13 @@ for (i in seq(good.idices)) {
     lpf.gcv.scores[i] <- lpf.fit$gcv_scores[lpf.fit$opt_k_gcv]
 }
 
-## out.dir = "~/current_projects/ZB/analysis_output/asv"
+## out.dir = Sys.getenv("GFLOW_MANUAL_OUTPUT")
 ## (file <- paste0(out.dir, "zambia_5k_ds_errors.rda"))
 ## save(lpf.fits, lpf.gcv.scores, file = file)
-load("~/current_projects/ZB/analysis_output/asvzambia_5k_ds_errors.rda")
+error.input <- Sys.getenv("GFLOW_ZB_ERROR_INPUT")
+stopifnot(nzchar(error.input), file.exists(error.input))
+# Original input snapshot: asvzambia_5k_ds_errors.rda
+load(error.input)
 
 plot(lpf.gcv.scores, type = "b")
 

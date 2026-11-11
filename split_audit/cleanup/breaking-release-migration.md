@@ -5,8 +5,8 @@ keeps compatibility wrappers for APIs owned by another package or for
 experimental families that lack a maintained owner.
 
 Public installed guidance is available in `help("gflow-migration", package =
-"gflow")` and the function-guide vignette. Historical ledger records below do
-not establish current dependency API compatibility.
+"gflow")` and the function-guide vignette. Consult installed dependency help for current argument and return-value
+contracts.
 
 ## Adaptive extrema
 
@@ -28,7 +28,7 @@ requested maxima/minima setting in `detect.maxima` for correct summaries.
 
 | Removed from `gflow` | Migration |
 |---|---|
-| Generic graph construction, adjacency/edge conversion, paths, distances, components, spectra, embeddings, diagnostics, graph selection, and graph plotting wrappers retired in Phases 2–6 | Call the same canonical API from `dgraphs`; see `dgraphs/GRAPH_MIGRATION_ACTION_PLAN.md` and its ownership ledger |
+| Generic graph construction, adjacency/edge conversion, paths, distances, components, spectra, embeddings, diagnostics, graph selection, and graph plotting wrappers | Call the same canonical API from `dgraphs`; consult its installed help |
 | `detect.graph.endpoints()` | `dgraphs::detect.graph.endpoints()` |
 | `cluster.graph.louvain()`, `congruence.with.labels()` | No `gflow` compatibility wrapper. Use `igraph` clustering and an explicitly chosen label-agreement implementation until a verified `dgraphs` successor is published |
 | `find.shortest.paths.within.radius()`, `compute.local.distance.fidelity()`, `create.pruned.isize.list()`, `create.vertex.labels()`, `create.vertex.label.indicators()` | No supported `gflow` replacement; migrate generic graph logic to `dgraphs` or application code |
@@ -69,8 +69,13 @@ requested maxima/minima setting in `detect.maxima` for correct summaries.
 
 ## Release policy
 
-The 0.2.0 release removes public names in one step because `gflow` remains
-pre-1.0 and the known downstream repositories are inventoried in
-`downstream-repositories.txt`. Downstream call sites must be updated to a
+The 0.2.0 release removes the public names listed above. Downstream call sites
+must be updated to a
 verified successor or pinned to 0.1.x when they depend on an experimental
 family for which this guide states that no maintained successor exists.
+
+The maintained ownership table covers package-local code. To inventory an
+additional set of downstream repositories, select a tab-separated registry
+with `GFLOW_DOWNSTREAM_REGISTRY`, set `GFLOW_LEDGER_OUTPUT` to a directory
+outside the source checkout, and run
+`Rscript tools/build_cleanup_ledger.R --scan-downstream`.

@@ -27,7 +27,10 @@ src/**/*.so
 src/**/*.a
 src/ANN/*.o
 src/*.bc
-src/tests/
+src/tests/*
+!src/tests/main.cpp
+!src/tests/Makefile
+!src/tests/test_helpers.hpp
 *.bc
 src/symbols.rds
 src/Makevars.local
@@ -77,7 +80,8 @@ libsonly/
 rchk_remote_out/
 
 cran_docs/
-docs/
+docs/*
+!docs/corridor-algorithms.md
 scripts/
 
 rchk_reports/
@@ -91,7 +95,6 @@ dev/*
 !dev/quadforms/
 !dev/quadforms/**
 dev/graph-trend-filtering
-dev/quadforms/quadform_gflow_graph_constructor_notes.md
 dev/data-geodesic-reconstruction/**/runs/
 dev/data-geodesic-reconstruction/**/assets/
 dev/data-geodesic-reconstruction/**/*.rds
@@ -110,6 +113,8 @@ inst/*/
 !inst/extdata/
 inst/extdata/*
 !inst/extdata/gflow-code-manifest.tsv
+!inst/extdata/vignette-results/
+!inst/extdata/vignette-results/knn-basins.rds
 !inst/shiny/
 !inst/shiny/**
 presentations/
@@ -117,21 +122,7 @@ presentations/
 # Relocated documents and study bundles; do not recreate them in the package.
 /dev/metric-graph-lowpass-benchmarks
 /presentations
-/dev/notes/gflow_notes.tex
-/dev/notes/normalized_graph_laplacian.tex
-/dev/notes/email_from_Susan_Holmes.md
-/dev/notes/make_check_results.md
-/dev/notes/phate_clean_room_cpp_plan_2026-05-03.md
-/docs/legacy-graph-ce-removal-manifest-2026-02-15.md
-/docs/legacy-graph-ce-pass5-removal-manifest-2026-02-16.md
-/docs/legacy-graph-ce-stage4-execution-checklist-2026-02-16.md
-/docs/legacy-graph-ce-stage7-execution-checklist-2026-02-16.md
-/docs/legacy-graph-ce-pass7-export-trim-manifest-2026-02-16.md
-/docs/legacy-graph-ce-pass4-removal-manifest-2026-02-16.md
-/docs/legacy-graph-ce-stage5-execution-checklist-2026-02-16.md
-/docs/legacy-graph-ce-stage1-audit-2026-02-15.md
-/docs/legacy-graph-ce-cleanup-plan-2026-02-15.md
-/docs/mac_ubuntu_recovery_notes_2026-03-28.md
+/dev/notes/
 /dev/data-geodesic-reconstruction
 /dev/geodesic-distance-estimation
 /dev/phate-affinity-length-geometry

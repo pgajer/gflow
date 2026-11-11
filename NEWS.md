@@ -1,5 +1,10 @@
 # gflow 0.2.0 (unreleased)
 
+* Precompute the repeated kNN-basin comparisons and sensitivity fits for
+  routine vignette builds, retaining every seed, observation, repetition,
+  scientific result and reproduction script. Main examples and numerical
+  consistency checks still run; source fingerprints guard against stale results.
+
 * `knn.basins()` now accepts `symmetrize = FALSE` for extrema tested against
   exactly each row's outgoing k nearest neighbors. The default remains the
   existing union-symmetrized method. Directed basins use shortest strictly
@@ -29,6 +34,13 @@
 
 ## Bug fixes
 
+* Native conversions now skip bulk copies for empty vectors and matrices.
+  This prevents sanitizer failures when filtering leaves no retained basins
+  or uncovered vertices, while preserving empty-result shapes and values.
+
+* Legacy basin-complex conversion now computes the hop index for maxima as
+  well as minima, avoiding uninitialized summary values.
+
 * `lcor.with.posterior()` now validates every feature before computation and
   rejects inconsistent draw counts instead of silently truncating later
   features. Inputs must be finite numeric fields with a common positive draw
@@ -48,7 +60,7 @@
   supplied order, allowing bounded blocks without a full association array.
 - Seeded permutation tests restore RNG state, support explicit within-group
   permutations, forward statistic settings and print the null/statistic contract.
-- R >= 4.1.0 and dgraphs >= 0.2.0 are required. Graph boundary adapters support
+- R >= 4.1.0 and dgraphs >= 0.4.0 are required. Graph boundary adapters support
   published list and development object APIs; optional viewer diagnostics name
   the required ivue version and installation route. Push/PR checks cover operating
   systems, the minimum R series, and serial/OpenMP builds.
@@ -76,6 +88,8 @@
 
 ## User guides
 
+* Reduced vignette size while retaining all examples, figures and numerical
+  verification.
 * Added installed task-oriented function and example-graph vignettes, with
   complete export/S3 coverage checks and public migration help.
 * Corrected the README constructor call, documented archived-object limits in
@@ -173,7 +187,7 @@
   `create.basin.complex()`. The adapters preserve raw overlap separately from
   primary assignment, retain legacy backend objects for provenance, normalize
   set memberships, and isolate seeded tie breaking from the global RNG state.
-* Added the Phase B canonical basin-complex API:
+* Added the canonical basin-complex API:
   - `create.basin.complex()` now validates graph geometry, fields, mass,
     density, method parameters, and refinement parameters into a stable
     `basin_complex` schema.
@@ -184,7 +198,7 @@
     archived-object conversion, and strict legacy-constructor retirement are
     now implemented. See the canonical basin-complex workflow vignette for
     runnable examples and lifecycle guidance.
-* Phase 1 legacy-1D decoupling pass completed:
+* Replaced legacy one-dimensional smoothing backends:
   - Internal consumers that previously depended on legacy `magelo`/`mabilo`-style
     1D smoothers now use spline-based replacements.
   - `magelo.with.external.BB()` now uses a spline backend while preserving its
@@ -194,7 +208,7 @@
     `magelog`, `fit.pwlm*`, and `get.magelo.MAB`).
 * At that intermediate stage, legacy 1D model-averaging APIs were marked
   experimental; their extraction and hard removal were subsequently completed.
-* Phase 3 extraction started with new `malo` package:
+* Began moving model-averaging functions to the new `malo` package:
   - `fit.pwlm*` and the 1D `get.*MAB*` benchmarking/model-comparison families now
     have native implementations in `malo`.
   - gflow legacy entry points for these families now delegate to `malo` when

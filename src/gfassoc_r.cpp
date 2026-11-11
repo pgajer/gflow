@@ -187,7 +187,9 @@ static SEXP convert_membership_to_R(const basin_membership_t& membership) {
     for (size_t v = 0; v < membership.n_vertices; ++v) {
         const auto& weights = membership.max_membership[v];
         SEXP s_v_wt = PROTECT(Rf_allocVector(REALSXP, weights.size()));
-        std::copy(weights.begin(), weights.end(), REAL(s_v_wt));
+        if (!weights.empty()) {
+            std::copy(weights.begin(), weights.end(), REAL(s_v_wt));
+        }
         SET_VECTOR_ELT(s_max_wt, v, s_v_wt);
         UNPROTECT(1);
     }
@@ -200,7 +202,9 @@ static SEXP convert_membership_to_R(const basin_membership_t& membership) {
     for (size_t v = 0; v < membership.n_vertices; ++v) {
         const auto& weights = membership.min_membership[v];
         SEXP s_v_wt = PROTECT(Rf_allocVector(REALSXP, weights.size()));
-        std::copy(weights.begin(), weights.end(), REAL(s_v_wt));
+        if (!weights.empty()) {
+            std::copy(weights.begin(), weights.end(), REAL(s_v_wt));
+        }
         SET_VECTOR_ELT(s_min_wt, v, s_v_wt);
         UNPROTECT(1);
     }
@@ -228,14 +232,18 @@ static SEXP convert_membership_to_R(const basin_membership_t& membership) {
     // max_values
     SEXP s_max_val = PROTECT(Rf_allocVector(REALSXP, membership.n_max_basins));
     n_protect++;
-    std::copy(membership.max_values.begin(), membership.max_values.end(), REAL(s_max_val));
+    if (!membership.max_values.empty()) {
+        std::copy(membership.max_values.begin(), membership.max_values.end(), REAL(s_max_val));
+    }
     SET_VECTOR_ELT(result, 6, s_max_val);
     SET_STRING_ELT(names, 6, Rf_mkChar("max_values"));
 
     // min_values
     SEXP s_min_val = PROTECT(Rf_allocVector(REALSXP, membership.n_min_basins));
     n_protect++;
-    std::copy(membership.min_values.begin(), membership.min_values.end(), REAL(s_min_val));
+    if (!membership.min_values.empty()) {
+        std::copy(membership.min_values.begin(), membership.min_values.end(), REAL(s_min_val));
+    }
     SET_VECTOR_ELT(result, 7, s_min_val);
     SET_STRING_ELT(names, 7, Rf_mkChar("min_values"));
 
@@ -311,7 +319,9 @@ static basin_membership_t convert_membership_from_R(SEXP s_membership) {
         SEXP s_v = PROTECT(VECTOR_ELT(s_max_wt, v));
         int n = Rf_length(s_v);
         result.max_membership[v].resize(n);
-        std::copy(REAL(s_v), REAL(s_v) + n, result.max_membership[v].begin());
+        if (n > 0) {
+            std::copy(REAL(s_v), REAL(s_v) + n, result.max_membership[v].begin());
+        }
         UNPROTECT(1);
     }
     UNPROTECT(1);
@@ -322,7 +332,9 @@ static basin_membership_t convert_membership_from_R(SEXP s_membership) {
         SEXP s_v = PROTECT(VECTOR_ELT(s_min_wt, v));
         int n = Rf_length(s_v);
         result.min_membership[v].resize(n);
-        std::copy(REAL(s_v), REAL(s_v) + n, result.min_membership[v].begin());
+        if (n > 0) {
+            std::copy(REAL(s_v), REAL(s_v) + n, result.min_membership[v].begin());
+        }
         UNPROTECT(1);
     }
     UNPROTECT(1);
@@ -346,13 +358,17 @@ static basin_membership_t convert_membership_from_R(SEXP s_membership) {
     // max_values
     SEXP s_max_val = PROTECT(VECTOR_ELT(s_membership, 6));
     result.max_values.resize(result.n_max_basins);
-    std::copy(REAL(s_max_val), REAL(s_max_val) + result.n_max_basins, result.max_values.begin());
+    if (result.n_max_basins > 0) {
+        std::copy(REAL(s_max_val), REAL(s_max_val) + result.n_max_basins, result.max_values.begin());
+    }
     UNPROTECT(1);
 
     // min_values
     SEXP s_min_val = PROTECT(VECTOR_ELT(s_membership, 7));
     result.min_values.resize(result.n_min_basins);
-    std::copy(REAL(s_min_val), REAL(s_min_val) + result.n_min_basins, result.min_values.begin());
+    if (result.n_min_basins > 0) {
+        std::copy(REAL(s_min_val), REAL(s_min_val) + result.n_min_basins, result.min_values.begin());
+    }
     UNPROTECT(1);
 
     return result;
@@ -375,21 +391,27 @@ static SEXP convert_polarity_to_R(const polarity_result_t& pol) {
     // theta
     SEXP s_theta = PROTECT(Rf_allocVector(REALSXP, n));
     n_protect++;
-    std::copy(pol.theta.begin(), pol.theta.end(), REAL(s_theta));
+    if (!pol.theta.empty()) {
+        std::copy(pol.theta.begin(), pol.theta.end(), REAL(s_theta));
+    }
     SET_VECTOR_ELT(result, 0, s_theta);
     SET_STRING_ELT(names, 0, Rf_mkChar("theta"));
 
     // polarity
     SEXP s_polarity = PROTECT(Rf_allocVector(REALSXP, n));
     n_protect++;
-    std::copy(pol.polarity.begin(), pol.polarity.end(), REAL(s_polarity));
+    if (!pol.polarity.empty()) {
+        std::copy(pol.polarity.begin(), pol.polarity.end(), REAL(s_polarity));
+    }
     SET_VECTOR_ELT(result, 1, s_polarity);
     SET_STRING_ELT(names, 1, Rf_mkChar("polarity"));
 
     // range
     SEXP s_range = PROTECT(Rf_allocVector(REALSXP, n));
     n_protect++;
-    std::copy(pol.range.begin(), pol.range.end(), REAL(s_range));
+    if (!pol.range.empty()) {
+        std::copy(pol.range.begin(), pol.range.end(), REAL(s_range));
+    }
     SET_VECTOR_ELT(result, 2, s_range);
     SET_STRING_ELT(names, 2, Rf_mkChar("range"));
 
@@ -424,17 +446,23 @@ static polarity_result_t convert_polarity_from_R(SEXP s_pol) {
     SEXP s_theta = PROTECT(VECTOR_ELT(s_pol, 0));
     size_t n = static_cast<size_t>(Rf_length(s_theta));
     result.theta.resize(n);
-    std::copy(REAL(s_theta), REAL(s_theta) + n, result.theta.begin());
+    if (n > 0) {
+        std::copy(REAL(s_theta), REAL(s_theta) + n, result.theta.begin());
+    }
     UNPROTECT(1);
 
     SEXP s_polarity = PROTECT(VECTOR_ELT(s_pol, 1));
     result.polarity.resize(n);
-    std::copy(REAL(s_polarity), REAL(s_polarity) + n, result.polarity.begin());
+    if (n > 0) {
+        std::copy(REAL(s_polarity), REAL(s_polarity) + n, result.polarity.begin());
+    }
     UNPROTECT(1);
 
     SEXP s_range = PROTECT(VECTOR_ELT(s_pol, 2));
     result.range.resize(n);
-    std::copy(REAL(s_range), REAL(s_range) + n, result.range.begin());
+    if (n > 0) {
+        std::copy(REAL(s_range), REAL(s_range) + n, result.range.begin());
+    }
     UNPROTECT(1);
 
     SEXP s_valid = PROTECT(VECTOR_ELT(s_pol, 3));
@@ -523,7 +551,9 @@ SEXP S_gfassoc_membership(
     for (size_t v = 0; v < n_vertices; ++v) {
         const auto& weights = cells.cell_membership[v];
         SEXP s_v_wt = PROTECT(Rf_allocVector(REALSXP, weights.size()));
-        std::copy(weights.begin(), weights.end(), REAL(s_v_wt));
+        if (!weights.empty()) {
+            std::copy(weights.begin(), weights.end(), REAL(s_v_wt));
+        }
         SET_VECTOR_ELT(s_cell_wt, v, s_v_wt);
         UNPROTECT(1);
     }
@@ -622,19 +652,25 @@ SEXP S_gfassoc_association(
 
     SEXP s_a_pol = PROTECT(Rf_allocVector(REALSXP, n));
     n_protect++;
-    std::copy(va.a_pol.begin(), va.a_pol.end(), REAL(s_a_pol));
+    if (!va.a_pol.empty()) {
+        std::copy(va.a_pol.begin(), va.a_pol.end(), REAL(s_a_pol));
+    }
     SET_VECTOR_ELT(s_vertex, 0, s_a_pol);
     SET_STRING_ELT(s_vertex_names, 0, Rf_mkChar("a_pol"));
 
     SEXP s_sign_pol = PROTECT(Rf_allocVector(REALSXP, n));
     n_protect++;
-    std::copy(va.sign_pol.begin(), va.sign_pol.end(), REAL(s_sign_pol));
+    if (!va.sign_pol.empty()) {
+        std::copy(va.sign_pol.begin(), va.sign_pol.end(), REAL(s_sign_pol));
+    }
     SET_VECTOR_ELT(s_vertex, 1, s_sign_pol);
     SET_STRING_ELT(s_vertex_names, 1, Rf_mkChar("sign_pol"));
 
     SEXP s_conf = PROTECT(Rf_allocVector(REALSXP, n));
     n_protect++;
-    std::copy(va.confidence.begin(), va.confidence.end(), REAL(s_conf));
+    if (!va.confidence.empty()) {
+        std::copy(va.confidence.begin(), va.confidence.end(), REAL(s_conf));
+    }
     SET_VECTOR_ELT(s_vertex, 2, s_conf);
     SET_STRING_ELT(s_vertex_names, 2, Rf_mkChar("confidence"));
 
@@ -722,56 +758,72 @@ SEXP S_gfassoc_basin_character(
     // chi_y_max
     SEXP s_chi_y_max = PROTECT(Rf_allocVector(REALSXP, bc.chi_y_max.size()));
     n_protect++;
-    std::copy(bc.chi_y_max.begin(), bc.chi_y_max.end(), REAL(s_chi_y_max));
+    if (!bc.chi_y_max.empty()) {
+        std::copy(bc.chi_y_max.begin(), bc.chi_y_max.end(), REAL(s_chi_y_max));
+    }
     SET_VECTOR_ELT(result, 0, s_chi_y_max);
     SET_STRING_ELT(names, 0, Rf_mkChar("chi_y_max"));
 
     // chi_y_min
     SEXP s_chi_y_min = PROTECT(Rf_allocVector(REALSXP, bc.chi_y_min.size()));
     n_protect++;
-    std::copy(bc.chi_y_min.begin(), bc.chi_y_min.end(), REAL(s_chi_y_min));
+    if (!bc.chi_y_min.empty()) {
+        std::copy(bc.chi_y_min.begin(), bc.chi_y_min.end(), REAL(s_chi_y_min));
+    }
     SET_VECTOR_ELT(result, 1, s_chi_y_min);
     SET_STRING_ELT(names, 1, Rf_mkChar("chi_y_min"));
 
     // chi_z_max
     SEXP s_chi_z_max = PROTECT(Rf_allocVector(REALSXP, bc.chi_z_max.size()));
     n_protect++;
-    std::copy(bc.chi_z_max.begin(), bc.chi_z_max.end(), REAL(s_chi_z_max));
+    if (!bc.chi_z_max.empty()) {
+        std::copy(bc.chi_z_max.begin(), bc.chi_z_max.end(), REAL(s_chi_z_max));
+    }
     SET_VECTOR_ELT(result, 2, s_chi_z_max);
     SET_STRING_ELT(names, 2, Rf_mkChar("chi_z_max"));
 
     // chi_z_min
     SEXP s_chi_z_min = PROTECT(Rf_allocVector(REALSXP, bc.chi_z_min.size()));
     n_protect++;
-    std::copy(bc.chi_z_min.begin(), bc.chi_z_min.end(), REAL(s_chi_z_min));
+    if (!bc.chi_z_min.empty()) {
+        std::copy(bc.chi_z_min.begin(), bc.chi_z_min.end(), REAL(s_chi_z_min));
+    }
     SET_VECTOR_ELT(result, 3, s_chi_z_min);
     SET_STRING_ELT(names, 3, Rf_mkChar("chi_z_min"));
 
     // mass_y_max
     SEXP s_mass_y_max = PROTECT(Rf_allocVector(REALSXP, bc.mass_y_max.size()));
     n_protect++;
-    std::copy(bc.mass_y_max.begin(), bc.mass_y_max.end(), REAL(s_mass_y_max));
+    if (!bc.mass_y_max.empty()) {
+        std::copy(bc.mass_y_max.begin(), bc.mass_y_max.end(), REAL(s_mass_y_max));
+    }
     SET_VECTOR_ELT(result, 4, s_mass_y_max);
     SET_STRING_ELT(names, 4, Rf_mkChar("mass_y_max"));
 
     // mass_y_min
     SEXP s_mass_y_min = PROTECT(Rf_allocVector(REALSXP, bc.mass_y_min.size()));
     n_protect++;
-    std::copy(bc.mass_y_min.begin(), bc.mass_y_min.end(), REAL(s_mass_y_min));
+    if (!bc.mass_y_min.empty()) {
+        std::copy(bc.mass_y_min.begin(), bc.mass_y_min.end(), REAL(s_mass_y_min));
+    }
     SET_VECTOR_ELT(result, 5, s_mass_y_min);
     SET_STRING_ELT(names, 5, Rf_mkChar("mass_y_min"));
 
     // mass_z_max
     SEXP s_mass_z_max = PROTECT(Rf_allocVector(REALSXP, bc.mass_z_max.size()));
     n_protect++;
-    std::copy(bc.mass_z_max.begin(), bc.mass_z_max.end(), REAL(s_mass_z_max));
+    if (!bc.mass_z_max.empty()) {
+        std::copy(bc.mass_z_max.begin(), bc.mass_z_max.end(), REAL(s_mass_z_max));
+    }
     SET_VECTOR_ELT(result, 6, s_mass_z_max);
     SET_STRING_ELT(names, 6, Rf_mkChar("mass_z_max"));
 
     // mass_z_min
     SEXP s_mass_z_min = PROTECT(Rf_allocVector(REALSXP, bc.mass_z_min.size()));
     n_protect++;
-    std::copy(bc.mass_z_min.begin(), bc.mass_z_min.end(), REAL(s_mass_z_min));
+    if (!bc.mass_z_min.empty()) {
+        std::copy(bc.mass_z_min.begin(), bc.mass_z_min.end(), REAL(s_mass_z_min));
+    }
     SET_VECTOR_ELT(result, 7, s_mass_z_min);
     SET_STRING_ELT(names, 7, Rf_mkChar("mass_z_min"));
 
@@ -816,7 +868,9 @@ SEXP S_gfassoc_overlap(
         SEXP s_M = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
         n_protect++;
         // Eigen is column-major like R
-        std::copy(M.data(), M.data() + nrow * ncol, REAL(s_M));
+        if (M.size() > 0) {
+            std::copy(M.data(), M.data() + nrow * ncol, REAL(s_M));
+        }
         return s_M;
     };
 
@@ -850,7 +904,9 @@ SEXP S_gfassoc_deviation(
     int ncol = Rf_ncols(s_overlap_matrix);
 
     Eigen::MatrixXd O(nrow, ncol);
-    std::copy(REAL(s_overlap_matrix), REAL(s_overlap_matrix) + nrow * ncol, O.data());
+    if (nrow > 0 && ncol > 0) {
+        std::copy(REAL(s_overlap_matrix), REAL(s_overlap_matrix) + nrow * ncol, O.data());
+    }
 
     // Compute deviation
     basin_deviation_t dev = compute_basin_deviation(O);
@@ -870,7 +926,9 @@ SEXP S_gfassoc_deviation(
         int nc = static_cast<int>(M.cols());
         SEXP s_M = PROTECT(Rf_allocMatrix(REALSXP, nr, nc));
         n_protect++;
-        std::copy(M.data(), M.data() + nr * nc, REAL(s_M));
+        if (M.size() > 0) {
+            std::copy(M.data(), M.data() + nr * nc, REAL(s_M));
+        }
         return s_M;
     };
 

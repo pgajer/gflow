@@ -25,5 +25,4 @@ Git. `docs/` holds these maintained notes, not generated pages. The site is
 explicitly labeled unreleased, matching NEWS and the current distribution.
 
 The GitHub Pages workflow builds from a clean checkout and publishes this output.
-The same clean build checks installed documentation before publishing. Scientific
-and private reports stay in their established manuscript/private locations.
+The same clean build checks installed documentation before publishing.

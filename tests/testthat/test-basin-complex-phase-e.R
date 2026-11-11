@@ -245,7 +245,7 @@ test_that("cell-complex nondefault profile is scientifically distinct", {
     ))
 })
 
-test_that("Phase E validation rejects parameter and cell payload drift", {
+test_that("validation rejects parameter and cell payload drift", {
     ring <- phase.e.ring(30L)
     rtcb <- create.basin.complex(
         ring$adj.list,

@@ -193,9 +193,7 @@ cleanup.classification <- function(name, source.file, protected) {
     if (name %in% protected || name %in% protected.class.methods) {
         return(c(
             ownership = "PROTECTED",
-            intended_package = "gflow",
-            lifecycle_action = "PROTECT",
-            target_release = "outside-cleanup-scope"
+            intended_package = "gflow"
         ))
     }
 
@@ -207,18 +205,14 @@ cleanup.classification <- function(name, source.file, protected) {
     if (source.file %in% association.files) {
         return(c(
             ownership = "CORE-ASSOCIATION",
-            intended_package = "gflow",
-            lifecycle_action = "KEEP-AND-CONSOLIDATE",
-            target_release = "cleanup-release"
+            intended_package = "gflow"
         ))
     }
 
     if (source.file == "R/compositional_data_utils.R") {
         return(c(
             ownership = "DOMAIN",
-            intended_package = "microbiome.utils",
-            lifecycle_action = "DEEXPORT-THEN-RELOCATE",
-            target_release = "phase-5"
+            intended_package = "microbiome.utils"
         ))
     }
     if (source.file == "R/two_factor_analysis.R") {
@@ -226,9 +220,7 @@ cleanup.classification <- function(name, source.file, protected) {
             "external-analysis-repository"
         return(c(
             ownership = "DOMAIN",
-            intended_package = owner,
-            lifecycle_action = "DEEXPORT-THEN-RELOCATE",
-            target_release = "phase-5"
+            intended_package = owner
         ))
     }
     if (source.file %in% c(
@@ -242,9 +234,7 @@ cleanup.classification <- function(name, source.file, protected) {
             "gflowui" else "external-analysis-repository"
         return(c(
             ownership = "DOMAIN",
-            intended_package = owner,
-            lifecycle_action = "DEEXPORT-THEN-RELOCATE",
-            target_release = "phase-5"
+            intended_package = owner
         ))
     }
 
@@ -255,20 +245,9 @@ cleanup.classification <- function(name, source.file, protected) {
         "R/graph_endpoint_geometry.R", "R/graphics.R",
         "R/partition_graph.R"
     )) {
-        temporary.public <- name %in% c(
-            "phate", "phate.core", "phate.embed",
-            "compute.diffusion.pseudotime.sparse",
-            "compute.potential.pseudotime.sparse"
-        )
         return(c(
             ownership = "DGRAPHS",
-            intended_package = "dgraphs",
-            lifecycle_action = if (temporary.public)
-                "TEMPORARY-PUBLIC-MIGRATE" else
-                "REVIEW-DEEXPORT-OR-ADAPTER",
-            target_release = if (temporary.public)
-                "after-dgraphs-parity" else
-                "phase-5-or-6"
+            intended_package = "dgraphs"
         ))
     }
 
@@ -277,18 +256,14 @@ cleanup.classification <- function(name, source.file, protected) {
     )) {
         return(c(
             ownership = "DGRAPHS",
-            intended_package = "dgraphs",
-            lifecycle_action = "TEMPORARY-PUBLIC-MIGRATE",
-            target_release = "after-dgraphs-parity"
+            intended_package = "dgraphs"
         ))
     }
 
     if (source.file %in% c("R/graph_generators.R", "R/hHN_graphs.R")) {
         return(c(
             ownership = "EXAMPLE",
-            intended_package = "tests-or-external-examples",
-            lifecycle_action = "DEEXPORT-THEN-MOVE",
-            target_release = "phase-5"
+            intended_package = "tests-or-external-examples"
         ))
     }
 
@@ -298,17 +273,13 @@ cleanup.classification <- function(name, source.file, protected) {
     )) {
         return(c(
             ownership = "CORE-PRIVATE",
-            intended_package = "gflow-internal-or-specialist-package",
-            lifecycle_action = "REVIEW-AND-DEEXPORT",
-            target_release = "phase-5-or-6"
+            intended_package = "gflow-internal-or-specialist-package"
         ))
     }
 
     c(
         ownership = "CORE-ANALYSIS",
-        intended_package = "gflow",
-        lifecycle_action = "KEEP-PENDING-S3-REVIEW",
-        target_release = "phase-6"
+        intended_package = "gflow"
     )
 }
 
@@ -359,14 +330,19 @@ cleanup.tests <- function(root, name) {
 }
 
 cleanup.read.downstream.registry <- function(root) {
-    path <- file.path(
+    path <- Sys.getenv("GFLOW_DOWNSTREAM_REGISTRY", unset = file.path(
         root, "split_audit/cleanup/downstream-repositories.txt"
-    )
+    ))
     lines <- readLines(path, warn = FALSE)
     lines <- lines[nzchar(trimws(lines)) & !grepl("^#", trimws(lines))]
     parts <- strsplit(lines, "\t", fixed = TRUE)
+    paths <- vapply(parts, `[[`, character(1), 1L)
+    absolute <- grepl("^(/|[A-Za-z]:[/\\\\]|~)", paths)
+    paths[!absolute] <- file.path(root, paths[!absolute])
+    paths <- vapply(paths, function(p) normalizePath(path.expand(p),
+                   winslash = "/", mustWork = FALSE), character(1))
     data.frame(
-        path = vapply(parts, `[[`, character(1), 1L),
+        path = unname(paths),
         scope = vapply(parts, `[[`, character(1), 2L),
         reason = vapply(parts, `[[`, character(1), 3L),
         stringsAsFactors = FALSE
@@ -434,7 +410,7 @@ cleanup.collapse <- function(x) {
     if (!length(x)) "none" else paste(sort(unique(x)), collapse = ";")
 }
 
-cleanup.build.ledger <- function(root, scan.downstream = TRUE) {
+cleanup.build.ledger <- function(root, scan.downstream = FALSE) {
     inventory <- cleanup.namespace.inventory(root)
     definitions <- cleanup.function.definitions(root)
     graph <- cleanup.call.graph(definitions)
@@ -476,12 +452,8 @@ cleanup.build.ledger <- function(root, scan.downstream = TRUE) {
             transitive_callers = cleanup.collapse(transitive),
             tests = cleanup.tests(root, method.name),
             documentation = cleanup.documentation(root, method.name),
-            known_downstream_callers =
-                cleanup.collapse(known.downstream),
-            lifecycle_action =
-                unname(classification[["lifecycle_action"]]),
-            target_release =
-                unname(classification[["target_release"]]),
+            known_downstream_callers = if (scan.downstream)
+                cleanup.collapse(known.downstream) else "not inventoried",
             protected_call_graph =
                 if (method.name %in% protected) "yes" else "no",
             stringsAsFactors = FALSE
@@ -660,7 +632,7 @@ cleanup.validate.ledger <- function(root, ledger = NULL) {
         "key", "item_type", "item_name", "source_file", "ownership",
         "intended_package", "current_status", "direct_callers",
         "transitive_callers", "tests", "documentation",
-        "known_downstream_callers", "lifecycle_action", "target_release",
+        "known_downstream_callers",
         "protected_call_graph"
     )
     absent.columns <- setdiff(required, names(ledger))

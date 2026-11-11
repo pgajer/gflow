@@ -14,7 +14,7 @@ native.path <- file.path(
     root, "split_audit/cleanup/native-symbol-ownership.csv"
 )
 if (!file.exists(dependency.path) || !file.exists(native.path)) {
-    stop("Phase 7 ownership ledgers are missing; run tools/build_phase7_ownership.R.")
+    stop("Native dependency ownership ledgers are missing; run tools/build_phase7_ownership.R.")
 }
 
 dependency <- read.csv(
@@ -125,7 +125,7 @@ if (length(errors)) {
 }
 
 cat(
-    "Phase 7 ownership passes for", nrow(dependency),
+    "Native dependency ownership passes for", nrow(dependency),
     "dependency declarations and", nrow(native),
     "native registrations.\n"
 )

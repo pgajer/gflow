@@ -112,7 +112,9 @@ SEXP S_ecdf(SEXP x) {
 
     // Convert the result to an SEXP
     SEXP ans = PROTECT(Rf_allocVector(REALSXP, result->size()));
-    std::copy(result->begin(), result->end(), REAL(ans));
+    if (!result->empty()) {
+        std::copy(result->begin(), result->end(), REAL(ans));
+    }
 
     UNPROTECT(1);
     return ans;

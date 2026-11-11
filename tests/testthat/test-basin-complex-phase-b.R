@@ -383,7 +383,7 @@ test_that("schema validation rejects corrupted canonical objects", {
     )
 })
 
-test_that("Phase B does not redirect or dual-class legacy constructors", {
+test_that("legacy constructors retain their original class", {
     graph <- phase.b.graph()
     legacy <- .compute.basins.of.attraction.backend(
         graph$adj.list,

@@ -2,6 +2,7 @@
 VERSION := $(shell grep "^Version:" DESCRIPTION | sed 's/Version: //')
 PKGNAME := gflow
 TARBALL := $(PKGNAME)_$(VERSION).tar.gz
+CHECK_DIR ?= $(shell python3 -c "from pathlib import Path; print(Path.home() / '.codex' / 'private' / 'gflow' / 'checks')")
 HOMEBREW_BIN := /opt/homebrew/bin
 GCC_BIN := /opt/homebrew/opt/gcc/bin
 TIDY_BIN := $(shell if [ -x "$(HOMEBREW_BIN)/tidy" ]; then echo "$(HOMEBREW_BIN)/tidy"; elif command -v tidy >/dev/null 2>&1; then command -v tidy; else echo "$(HOMEBREW_BIN)/tidy"; fi)
@@ -10,6 +11,7 @@ R_RUN := $(R_ENV) R
 RSCRIPT_RUN := $(R_ENV) Rscript
 
 clean:
+	rm -f src/Makevars.local src/Makevars.win.local
 	find src -name "*.o" -delete
 	find src -name "*.so" -delete
 	rm -f src/*.dll
@@ -33,26 +35,42 @@ document: attrs
 manifest:
 	$(RSCRIPT_RUN) tools/update_gflow_build_manifest.R
 
-build: clean document manifest
+.PHONY: check-public-content test-public-content
+check-public-content:
+	@python3 tools/check-public-content.py
+
+test-public-content:
+	@python3 tools/tests/test-public-content.py
+
+build: check-public-content clean document manifest
 	find src -name "*.o" -delete
 	find src -name "*.so" -delete
 	rm -f src/*.dll
 	$(R_RUN) CMD build .
+	python3 tools/check-public-content.py --archive "$(TARBALL)"
+	python3 tools/check-package-size.py "$(TARBALL)"
 
-build-verbose: clean document
+build-verbose: check-public-content clean document
 	$(R_RUN) CMD build .
+	python3 tools/check-public-content.py --archive "$(TARBALL)"
+	python3 tools/check-package-size.py "$(TARBALL)"
 
-build-log: clean document
+build-log: check-public-content clean document
 	$(R_RUN) CMD build .
+	python3 tools/check-public-content.py --archive "$(TARBALL)"
+	python3 tools/check-package-size.py "$(TARBALL)"
 
 check: build
-	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" $(R_RUN) CMD check $(TARBALL) --as-cran
+	mkdir -p "$(CHECK_DIR)"
+	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" $(R_RUN) CMD check --output="$(CHECK_DIR)" $(TARBALL) --as-cran
 
 check-fast: build
-	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" $(R_RUN) CMD check $(TARBALL) --as-cran --no-examples --no-tests --no-manual
+	mkdir -p "$(CHECK_DIR)"
+	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" $(R_RUN) CMD check --output="$(CHECK_DIR)" $(TARBALL) --as-cran --no-examples --no-tests --no-manual
 
 check-examples: build
-	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" $(R_RUN) CMD check $(TARBALL) --as-cran --examples
+	mkdir -p "$(CHECK_DIR)"
+	PATH="$(GCC_BIN):$(HOMEBREW_BIN):$$PATH" R_TIDYCMD="$(TIDY_BIN)" $(R_RUN) CMD check --output="$(CHECK_DIR)" $(TARBALL) --as-cran --examples
 
 install: build
 	$(R_RUN) CMD INSTALL $(TARBALL)
@@ -93,5 +111,6 @@ install-user:
 showcase:
 	$(RSCRIPT_RUN) tools/render_basin_showcase.R
 
-website:
+website: check-public-content
 	$(RSCRIPT_RUN) tools/build_website.R
+	python3 tools/check-public-content.py --tree build/site

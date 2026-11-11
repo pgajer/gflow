@@ -1,5 +1,5 @@
 ## ---------------------------------------------------------------------------------------------
-## gflow adaptation of ~/current_projects/msr2/R_correctness_tests/test_v4_create_basin_cx.R
+## Adapted from msr2's R_correctness_tests/test_v4_create_basin_cx.R
 ## ---------------------------------------------------------------------------------------------
 
 ## =================================================================================
@@ -7,6 +7,12 @@
 ## =================================================================================
 ## Setup: 2D uniform sample from [0,1]^2 with Gaussian mixture response + noise
 ## =================================================================================
+
+# Set GFLOW_MANUAL_DATA to the directory containing the historical snapshots.
+# Newly generated results are written to GFLOW_MANUAL_OUTPUT (default: tempdir()).
+manual.data <- Sys.getenv("GFLOW_MANUAL_DATA", unset = "tests/manual/data")
+manual.output <- Sys.getenv("GFLOW_MANUAL_OUTPUT", unset = tempdir())
+dir.create(manual.output, recursive = TRUE, showWarnings = FALSE)
 
 ## ---- Function and Grid Setup ----
 f1 <- create.gaussian.mixture(A1 = 0.25, A2 = 1, sigma = 0.5)
@@ -63,7 +69,7 @@ cat(sprintf("Selected graph: k = %d\n",
 
 ## ---- Save Results ----
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-output.dir <- "~/current_projects/gflow/tests/manual/data"
+output.dir <- manual.output
 output.file <- file.path(output.dir,
                          sprintf("2D_example_1_%s.rda", timestamp))
 
@@ -84,10 +90,10 @@ save(
   file = output.file
 )
 cat(sprintf("Saved to: %s\n", output.file))
-## Saved to: ~/current_projects/gflow/tests/manual/data/2D_example_1_20251008_183721.rda # n = 100
-## Saved to: ~/current_projects/gflow/tests/manual/data/2D_example_1_20251008_184407.rda # n = 250
+## Original snapshot: 2D_example_1_20251008_183721.rda # n = 100
+## Original snapshot: 2D_example_1_20251008_184407.rda # n = 250
 
-output.file <- "~/current_projects/gflow/tests/manual/data/2D_example_1_20251008_183721.rda"
+output.file <- file.path(manual.data, "2D_example_1_20251008_183721.rda")
 ## ---- Load Results (for continuation) ----
 ## load(output.file)
 
@@ -221,7 +227,7 @@ for (i in seq_along(gamma.grid)) {
     gcv.score[i] <- min(fit$gcv$gcv.optimal)
 }
 
-output.file <- "~/current_projects/gflow/tests/manual/data/rdcx_fits_of_2D_example_1_20251008_184407.rda"
+output.file <- file.path(manual.data, "rdcx_fits_of_2D_example_1_20251008_184407.rda")
 save(fit.list,
      oracle.error,
      training.error,
@@ -229,13 +235,13 @@ save(fit.list,
      file = output.file
 )
 cat(sprintf("Saved to: %s\n", output.file))
-## Saved to: ~/current_projects/gflow/tests/manual/data/rdcx_fits_of_2D_example_1_20251008_184407.rda
+## Original snapshot: rdcx_fits_of_2D_example_1_20251008_184407.rda
 
 plot(gamma.grid, oracle.error, type = "l", main = "oracle.error", ylab = "oracle.error", xlab = "gamma.grid")
 plot(gamma.grid, training.error, type = "l", main = "training.error", ylab = "training.error", xlab = "gamma.grid")
 plot(gamma.grid, gcv.score, type = "l", main = "gcv.score", ylab = "gcv.score", xlab = "gamma.grid")
 
-file <- "~/current_projects/gflow/tests/manual/pics/rdcx_fits_of_2D_example_1_errors_"
+file <- paste0(manual.output, "/rdcx_fits_of_2D_example_1_errors_")
 (file <- paste0(file, timestamp, ".pdf"))
 pdf(file, width=18, height=6)
 op <- par(mfrow=c(1,3), mar=c(3.5,3.5,1.5,0.5), mgp=c(2.0,0.4,0),tcl = -0.3)
@@ -282,7 +288,7 @@ for (k in 3:20) {
     i <- i + 1
 }
 
-output.file <- "~/current_projects/gflow/tests/manual/data/rdcx_fits_by_k_of_2D_example_1_20251008_184407.rda"
+output.file <- file.path(manual.data, "rdcx_fits_by_k_of_2D_example_1_20251008_184407.rda")
 save(k.fit.list,
      k.oracle.error,
      k.training.error,
@@ -290,7 +296,7 @@ save(k.fit.list,
      file = output.file
 )
 cat(sprintf("Saved to: %s\n", output.file))
-## Saved to: ~/current_projects/gflow/tests/manual/data/rdcx_fits_by_k_of_2D_example_1_20251008_184407.rda
+## Original snapshot: rdcx_fits_by_k_of_2D_example_1_20251008_184407.rda
 
 op <- par(mfrow=c(1,3), mar=c(3.5,3.5,1.5,0.5), mgp=c(2.0,0.4,0),tcl = -0.3)
 plot(3:20,k.oracle.error, type = "l", main = "oracle.error", ylab = "oracle.error", xlab = "k")
@@ -298,7 +304,7 @@ plot(3:20,k.training.error, type = "l", main = "training.error", ylab = "trainin
 plot(3:20,k.gcv.score, type = "l", main = "gcv.score", ylab = "gcv.score", xlab = "k")
 par(op)
 
-file <- "~/current_projects/gflow/tests/manual/pics/rdcx_fits_by_k_of_2D_example_1_errors_"
+file <- paste0(manual.output, "/rdcx_fits_by_k_of_2D_example_1_errors_")
 (file <- paste0(file, timestamp, ".pdf"))
 pdf(file, width=18, height=6)
 op <- par(mfrow=c(1,3), mar=c(3.5,3.5,1.5,0.5), mgp=c(2.0,0.4,0),tcl = -0.3)

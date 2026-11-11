@@ -76,7 +76,9 @@ SEXP create_R_list(const std::vector<std::vector<std::vector<double>>>& X_traj,
     // Create median k-distances vector
     {
         SEXP median_kdistances_r = PROTECT(Rf_allocVector(REALSXP, median_kdistances.size()));
-        std::copy(median_kdistances.begin(), median_kdistances.end(), REAL(median_kdistances_r));
+        if (!median_kdistances.empty()) {
+            std::copy(median_kdistances.begin(), median_kdistances.end(), REAL(median_kdistances_r));
+        }
         SET_VECTOR_ELT(result, 1, median_kdistances_r);
         UNPROTECT(1);
     }

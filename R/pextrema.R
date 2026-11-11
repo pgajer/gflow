@@ -54,7 +54,7 @@
 #'
 #' For a vertex \eqn{i} with neighbors \eqn{N(i)}, where each vertex \eqn{j}
 #' carries density weight \eqn{\rho(j) > 0}, the maxp score is:
-#' \deqn{\text{maxp}(i|\hat{y},\rho) = \frac{\sum_{j \in N(i): \hat{y}(i) > \hat{y}(j)} \rho(j)}{\sum_{j \in N(i)} \rho(j)}}
+#' \deqn{\mathrm{maxp}(i|\hat{y},\rho) = \frac{\sum_{j \in N(i): \hat{y}(i) > \hat{y}(j)} \rho(j)}{\sum_{j \in N(i)} \rho(j)}}
 #'
 #' The density weighting downweights contributions from isolated outlier neighbors
 #' that may violate the maximum condition due to sampling sparsity rather than
@@ -222,7 +222,7 @@ maxp <- function(i, nbrs, y, rho = rep(1, length(y))) {
 #'
 #' For a vertex \eqn{i} with neighbors \eqn{N(i)}, where each vertex \eqn{j}
 #' carries density weight \eqn{\rho(j) > 0}, the minp score is:
-#' \deqn{\text{minp}(i|\hat{y},\rho) = \frac{\sum_{j \in N(i): \hat{y}(i) < \hat{y}(j)} \rho(j)}{\sum_{j \in N(i)} \rho(j)}}
+#' \deqn{\mathrm{minp}(i|\hat{y},\rho) = \frac{\sum_{j \in N(i): \hat{y}(i) < \hat{y}(j)} \rho(j)}{\sum_{j \in N(i)} \rho(j)}}
 #'
 #' The density weighting downweights contributions from isolated outlier neighbors
 #' that may violate the minimum condition due to sampling sparsity rather than

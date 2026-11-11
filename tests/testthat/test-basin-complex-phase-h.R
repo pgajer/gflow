@@ -140,6 +140,7 @@ test_that("archived geodesic and cell objects reconstruct canonically", {
         fixture$edge.length.list,
         fixture$field
     )
+    expect_identical(cells$initial_basin_cx$basins_df$hop_idx, rep(2L, 3))
     converted.geodesic <- as.basin.complex(
         geodesic,
         adj.list = fixture$adj.list,

@@ -1274,6 +1274,9 @@ basin_cx_t set_wgraph_t::create_basin_cx(
             detect_maxima
             );
 
+        basin.extremum_hop_index = compute_extremum_hop_index(
+            vertex, y, detect_maxima);
+
         if (basin.reachability_map.sorted_vertices.size()) {
 			// See comments in the local min block for this part
 			double min_span = INFINITY;

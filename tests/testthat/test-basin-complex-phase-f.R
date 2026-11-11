@@ -207,7 +207,7 @@ test_that("maxima and minima clustering match legacy stage output", {
     }
 })
 
-test_that("geometric filtering matches legacy on reviewed metrics", {
+test_that("geometric filtering matches legacy on supported metrics", {
     fixture <- phase.f.fixture()
     legacy <- phase.f.legacy.geodesic(
         fixture,

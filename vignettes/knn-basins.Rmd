@@ -14,13 +14,24 @@ vignette: >
 ```{r setup, include=FALSE}
 library(gflow)
 if (!exists("knn_build_identity")) knn_build_identity <- get.gflow.build.identity()
+recompute <- isTRUE(getOption("gflow.recompute.vignettes", FALSE))
+if (!recompute) {
+    results_file <- if (exists("knn_results_file")) knn_results_file else
+        system.file("extdata", "vignette-results", "knn-basins.rds", package = "gflow")
+    stored_results <- readRDS(results_file)
+    source_md5 <- unname(tools::md5sum(knitr::current_input(dir = TRUE)))
+    if (!identical(source_md5, stored_results$provenance$vignette.md5) ||
+        !identical(readLines(system.file("extdata", "gflow-code-manifest.tsv", package = "gflow")),
+                   stored_results$provenance$code.manifest))
+        stop("Vignette results are stale; regenerate with vignettes/precompute-knn-basins.R.")
+}
 artifact_dir <- if (exists("knn_artifact_dir")) knn_artifact_dir else
     file.path(tempdir(), "gflow-knn-vignette")
 dir.create(artifact_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(artifact_dir, "figures"), showWarnings = FALSE)
 knitr::opts_chunk$set(
     collapse = TRUE, comment = "#>", warning = TRUE, message = FALSE,
-    fig.width = 8.4, fig.height = 4.8, dpi = 144, fig.retina = 2,
+    fig.width = 8.4, fig.height = 4.8, dpi = 100, fig.retina = 1,
     dev = "png", out.width = "100%",
     cache.path = paste0(file.path(artifact_dir, "cache"), "/"),
     cache.extra = list(build = knn_build_identity$build.id,
@@ -680,12 +691,10 @@ synthetic_key <- function(seed, surface, outcome, mode)
     paste(seed, surface, outcome, mode, sep = ":")
 ```
 
-```{r synthetic-comparison-fits, cache=TRUE, dependson=c("synthetic-surfaces", "synthetic-evaluation-functions"), include=FALSE}
+```{r synthetic-comparison-fits, eval=recompute, cache=TRUE, dependson=c("synthetic-surfaces", "synthetic-evaluation-functions"), include=FALSE}
 synthetic_seeds <- 120601:120608
 synthetic_cases <- list()
 synthetic_equalities <- list()
-synthetic_reused <- 0L
-case_number <- 0L
 for (seed in synthetic_seeds) {
     set.seed(seed)
     U <- matrix(runif(5000, -1.65, 1.65), ncol = 2)
@@ -698,23 +707,7 @@ for (seed in synthetic_seeds) {
             y <- if (outcome == "Exact") exact else round(exact / .1) * .1
             pair <- list()
             for (mode in c("Symmetric", "Asymmetric")) {
-                case_number <- case_number + 1L
-                fit <- NULL
-                # The local renderer can supply a build-validated archive.
-                # Ordinary package/vignette builds compute these fits directly.
-                if (exists("knn_synthetic_archive")) {
-                    old <- readRDS(file.path(knn_synthetic_archive, "cases", sprintf("%02d.rds", case_number)))
-                    stopifnot(identical(old$X, X), identical(old$y, y),
-                              old$metadata$seed == seed, old$metadata$surface == surface,
-                              old$metadata$outcome == outcome, old$metadata$mode == mode)
-                    p <- old$fit$parameters
-                    stopifnot(p$k == 50L, p$metric == "L2", p$direction == "max",
-                              p$min.persistence == .15, p$min.basin.size == 100L,
-                              p$symmetrization == if (mode == "Symmetric") "union" else "none")
-                    fit <- old$fit
-                    synthetic_reused <- synthetic_reused + 1L
-                }
-                if (is.null(fit)) fit <- knn.basins(X, y, k = 50, metric = "L2", direction = "max",
+                fit <- knn.basins(X, y, k = 50, metric = "L2", direction = "max",
                     min.persistence = .15, min.basin.size = 100, symmetrize = mode == "Symmetric")
                 inverse <- knn.basins(X, -y, k = 50, metric = "L2", direction = "min",
                     min.persistence = .15, min.basin.size = 100, symmetrize = mode == "Symmetric")$min
@@ -737,6 +730,14 @@ for (seed in synthetic_seeds) {
     }
 }
 synthetic_equalities <- do.call(rbind, synthetic_equalities)
+```
+
+```{r stored-synthetic-results, include=FALSE}
+if (!recompute) {
+    synthetic_seeds <- stored_results$seeds
+    synthetic_cases <- stored_results$cases
+    synthetic_equalities <- stored_results$equalities
+}
 ```
 
 For example, the first four-peak sample with rounded heights is fitted as follows:
@@ -1256,12 +1257,15 @@ numerical check below compares them at `k = 25`.
 | Exact 2D | 2,000 | 0.30 outcome units | 100 (5%) |
 | Terrain | 5,307 | 5 dataset height units | 100 (1.88%) |
 
-```{r sensitivity-fits, cache=TRUE, dependson=c("one-data", "two-data", "terrain-data")}
+```{r sensitivity-inputs}
 sensitivity_inputs <- list(
     `Exact 1D` = list(X = X1, y = y1, p = .25, metrics = "L2"),
     `Exact 2D` = list(X = X2, y = y2, p = .3, metrics = c("L2", "Linfty")),
     Terrain = list(X = Xv, y = yv, p = 5, metrics = c("L2", "Linfty"))
 )
+```
+
+```{r sensitivity-fits, eval=recompute, cache=TRUE, dependson=c("one-data", "two-data", "terrain-data")}
 sensitivity_fits <- list()
 for (name in names(sensitivity_inputs)) {
     input <- sensitivity_inputs[[name]]
@@ -1275,6 +1279,10 @@ for (name in names(sensitivity_inputs)) {
                        min.persistence = input$p, min.basin.size = 100)
     }
 }
+```
+
+```{r stored-sensitivity-results, include=FALSE}
+if (!recompute) sensitivity_fits <- stored_results$sensitivity
 ```
 
 ```{r sensitivity-summary, include=FALSE}
@@ -1331,7 +1339,9 @@ memberships.
 ## Numerical checks and interpretation limits
 
 The checks accompanying this vignette use the displayed inputs and stored
-results. They verify:
+results. With precomputed comparisons, the synthetic input-pairing and
+sign-reversal assertions run when the results are generated; the remaining
+checks below run during rendering. They verify:
 
 * conservation of all observations before size filtering and exact accounting
   of retained and unassigned observations afterward;
@@ -1350,7 +1360,7 @@ results. They verify:
   independent threshold-reachability search for all asymmetric terrain extrema;
 * analytic 2D reference basins against numerical gradient trajectories, both
   synthetic basin-agreement measures against independent calculations, the
-  fragment illustration, and reproduction of the previously reviewed means.
+  fragment illustration, and agreement with fixed reference means.
 
 ```{r numerical-verification, include=FALSE}
 verification <- data.frame(check = character(), cases = integer(), passed = logical())
@@ -1633,7 +1643,7 @@ expected_synthetic <- data.frame(
     one.to.one = c(97.69,97.69,71.825,39.925,95.42,95.42,57.665,36.33),
     many.to.one = c(97.69,97.69,71.825,80.3,95.42,95.42,57.665,68.495),
     unassigned = c(0,0,0,18.71,0,0,0,28.38))
-record_check("Synthetic means reproduce the reviewed experiment", 8L,
+record_check("Synthetic means agree with fixed reference values", 8L,
               isTRUE(all.equal(synthetic_summary[names(expected_synthetic)], expected_synthetic, tolerance = 1e-10)))
 
 # The small explanatory example has one true basin, two estimates, and ten NA.
@@ -1671,8 +1681,18 @@ The complete source is installed with the vignette. For method details, see
 The random seeds are 22061 (1D noise), 22062 (uniform 2D locations), and
 22063 (nonuniform 2D locations). The controlled comparison uses seeds
 120601--120608, with seed 91901 for the independent trajectory check. All fits use the original coordinates and
-the displayed outcomes. Cached chunks include the package code/build identity
-and runtime identity, so changed implementations do not silently reuse results.
+the displayed outcomes. Ordinary rendering loads precomputed synthetic
+comparisons and sensitivity fits; the main examples and numerical checks still
+execute. The stored results retain all repetitions, observations and numerical
+settings, and are checked against the vignette and package-source fingerprints.
+No full neighbor matrices are needed in the stored comparison results.
+
+To recompute every fit while rendering, set
+`options(gflow.recompute.vignettes = TRUE)`. To regenerate the stored results,
+install the current package sources and run
+`Rscript vignettes/precompute-knn-basins.R` from the package source directory.
+The complete calculation remains in this vignette; the script records its
+source fingerprints, seeds, settings, package versions and R platform.
 
 ```{r reproducibility, echo=FALSE}
 knitr::kable(data.frame(package = "gflow", version = as.character(packageVersion("gflow")),

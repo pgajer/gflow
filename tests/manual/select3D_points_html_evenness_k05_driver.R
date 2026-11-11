@@ -56,10 +56,10 @@ ensure.gflow <- function(repo.root) {
 
 parse.args <- function(args) {
   out <- list(
-    bundle.file = "/Users/pgajer/current_projects/symptoms/results/asv_full_graph_evenness_endpoints_k05/evenness.endpoints.k05.bundle.rds",
-    run.meta.file = "/Users/pgajer/current_projects/symptoms/results/asv_full_graph_evenness_endpoints_k05/run.metadata.rds",
+    bundle.file = Sys.getenv("GFLOW_SELECTION_BUNDLE", unset = ""),
+    run.meta.file = Sys.getenv("GFLOW_SELECTION_METADATA", unset = ""),
     layout.file = NULL,
-    out.dir = "/Users/pgajer/current_projects/symptoms/results/asv_full_graph_evenness_endpoints_k05/manual_selection",
+    out.dir = Sys.getenv("GFLOW_SELECTION_OUTPUT", unset = ""),
     selector = "plotly",
     hide.gray = TRUE,
     launch.browser = TRUE
@@ -90,6 +90,8 @@ main <- function() {
 
   opts <- parse.args(commandArgs(trailingOnly = TRUE))
 
+  if (!nzchar(opts$out.dir)) stop("Provide --out-dir or GFLOW_SELECTION_OUTPUT.")
+  if (!nzchar(opts$bundle.file)) stop("Provide --bundle-file or GFLOW_SELECTION_BUNDLE.")
   if (!file.exists(opts$bundle.file)) stop("Bundle file not found: ", opts$bundle.file)
   bundle <- readRDS(opts$bundle.file)
 

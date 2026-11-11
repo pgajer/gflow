@@ -4,3 +4,4 @@
 # Makevars compiles vendored sources in nested directories, which R's default
 # cleanup does not remove before the source tarball is assembled.
 find src -type f \( -name '*.o' -o -name '*.so' -o -name '*.dll' \) -delete
+rm -f src/Makevars.local src/Makevars.win.local

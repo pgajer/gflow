@@ -19,13 +19,13 @@ These commands share the active R library settings. On a machine without a
 writable default library, create a user library directory, set `R_LIBS_USER`
 to that directory, and run the commands in that environment. To validate a
 separate installation, set `R_LIBS` to an isolated library before running them.
-Requires R >= 4.1.0 and dgraphs >= 0.2.0. Published dgraphs 0.2.0 and the
-0.3.0.9000 object API have separate compatibility checks for components,
-hop graphs and canonical overlap cells. Future dependency changes still need
-the same checks. Optional 3D viewing requires ivue >= 0.1.0; use its
-[documented development installation](https://pgajer.github.io/ivue/).
+Requires R >= 4.1.0 and dgraphs >= 0.4.0. The current release checks use
+published dgraphs 0.4.1. Dependency compatibility checks cover components,
+hop graphs and canonical overlap cells. Future dependency changes need the
+same checks. Optional 3D viewing requires ivue >= 0.1.0; see its
+[installation guide](https://pgajer.github.io/ivue/).
 
-`make build` produces `gflow_0.2.0.tar.gz` with generated help and all four
+`make build` produces `gflow_0.2.0.tar.gz` with generated help and all five
 guides. Once the required dependencies are installed, this archive can also be
 installed using `R CMD INSTALL gflow_0.2.0.tar.gz`. Direct Git/local installers
 that do not regenerate Rd and build vignettes are not the complete-help route.

@@ -95,10 +95,8 @@ k.max <- 12L
 
 X.graphs <- dgraphs::create.iknn.graphs(
   X,
-  kmin = k.min,
-  kmax = k.max,
+  k.values = seq.int(k.min, k.max),
   max.path.edge.ratio.deviation.thld = 0.1,
-  n.cores = 1L,
   verbose = TRUE
 )
 summary(X.graphs)
@@ -109,10 +107,8 @@ summary(X.graphs)
 ```{r iknn-selectk, fig.cap="Graph-scale selection diagnostics for the simulated circle; the displayed criterion selects a graph, not a validated basin partition."}
 X.graphs2 <- dgraphs::build.iknn.graphs.and.selectk(
   X,
-  kmin = k.min,
-  kmax = k.max,
+  k.values = seq.int(k.min, k.max),
   method = "edit",
-  n.cores = 1L,
   verbose = TRUE
 )
 
@@ -140,9 +136,9 @@ if (is.na(k.idx)) k.idx <- 1L
 
 g.sel <- X.graphs$geom_pruned_graphs[[k.idx]]
 layout.2d <- dgraphs::graph.embedding(
-  adj.list = g.sel$adj_list,
-  weights.list = g.sel$weight_list,
-  invert.weights = TRUE,
+  graph = g.sel,
+  edge.attribute = "length",
+  transform = "reciprocal",
   dim = 2,
   method = "fr"
 )
@@ -169,8 +165,8 @@ y.true.use <- y.true
 comp1.use <- comp1
 comp2.use <- comp2
 
-adj.list <- g.sel$adj_list
-edge.length.list <- g.sel$weight_list
+adj.list <- dgraphs::graph.adjacency(g.sel)
+edge.length.list <- dgraphs::graph.lengths(g.sel)
 observed_field <- as.double(y.use)
 
 data.frame(
@@ -428,15 +424,18 @@ if (sum(adj.sim > 0) == 0) {
 
 ## Optional `grip` 3D Layout
 
+This optional edge-length layout requires `grip` 0.3.0 or later.
+
 ```{r optional-grip-layout, eval=FALSE}
 if (requireNamespace("grip", quietly = TRUE) &&
+    utils::packageVersion("grip") >= "0.3.0" &&
     requireNamespace("ivue", quietly = TRUE)) {
   g <- X.graphs$geom_pruned_graphs[[k.idx]]
 
   X.graphs.3d <- grip::grip(
     metric = "edge_length",
-    adj.list = g$adj_list,
-    weight.list = g$weight_list,
+    adj.list = dgraphs::graph.adjacency(g),
+    weight.list = dgraphs::graph.lengths(g),
     dim = 3,
     rounds = 50,
     final.rounds = 50,
@@ -455,7 +454,8 @@ if (requireNamespace("grip", quietly = TRUE) &&
   selection first, then choose adequate permutation resolution and an
   appropriate multiple-testing procedure. More permutations do not fix an
   invalid null model.
-- For larger datasets, use `n.cores > 1` and consider chunk-level caching.
+- For larger datasets, consider chunk-level caching and use each function's
+  documented parallelism controls.
 - If basin refinement is unstable for a specific dataset, start with relaxed
   filtering and tighten thresholds gradually.
 

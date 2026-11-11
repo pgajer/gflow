@@ -15,7 +15,7 @@ test_that("dependency and native ownership ledgers cover the live package", {
     expect_identical(attr(output, "status"), NULL)
     expect_match(
         paste(output, collapse = "\n"),
-        "Phase 7 ownership passes"
+        "Native dependency ownership passes"
     )
 })
 

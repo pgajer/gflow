@@ -103,7 +103,9 @@ extern "C" SEXP S_compute_geodesic_stats(
     // 0: radii
     {
         SEXP radii_sexp = PROTECT(Rf_allocVector(REALSXP, n_radii));
-        std::copy(stats.radii.begin(), stats.radii.end(), REAL(radii_sexp));
+        if (!stats.radii.empty()) {
+            std::copy(stats.radii.begin(), stats.radii.end(), REAL(radii_sexp));
+        }
         SET_VECTOR_ELT(result, 0, radii_sexp);
         UNPROTECT(1);
     }
@@ -355,7 +357,9 @@ extern "C" SEXP S_compute_geodesic_stats(
         for (R_xlen_t r = 0; r < n_radii; ++r) {
             const std::vector<double>& rv = stats.radius_overlaps[(size_t)r];
             SEXP v = PROTECT(Rf_allocVector(REALSXP, (R_xlen_t)rv.size()));
-            std::copy(rv.begin(), rv.end(), REAL(v));
+            if (!rv.empty()) {
+                std::copy(rv.begin(), rv.end(), REAL(v));
+            }
             SET_VECTOR_ELT(radius_overlaps_list, r, v);
             UNPROTECT(1);
         }

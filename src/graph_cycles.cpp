@@ -295,7 +295,9 @@ SEXP S_cycle_sizes(SEXP RA) {
     // Convert the output to SEXP
     SEXP result = PROTECT(Rf_allocVector(INTSXP, cycle_lengths->size()));
     int* result_ptr = INTEGER(result);
-    std::copy(cycle_lengths->begin(), cycle_lengths->end(), result_ptr);
+    if (!cycle_lengths->empty()) {
+        std::copy(cycle_lengths->begin(), cycle_lengths->end(), result_ptr);
+    }
     UNPROTECT(1);
 
     return result;

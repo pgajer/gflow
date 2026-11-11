@@ -495,9 +495,13 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
                 SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
                 int* trajectory_ptr = INTEGER(trajectory);
 
-                std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
-                std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
-                          trajectory_ptr + descending_trajectory.size());
+                if (!descending_trajectory.empty()) {
+                    std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
+                }
+                if (!ascending_trajectory.empty()) {
+                    std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
+                              trajectory_ptr + descending_trajectory.size());
+                }
 
                 SET_VECTOR_ELT(trajectories, vertex, trajectory);
                 UNPROTECT(1);
@@ -538,7 +542,9 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
                 INTEGER(local_maxima)[max_idx] = lmax;
                 const auto& connected_mins = lmax_to_lmin_map[lmax];
                 SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
-                std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
+                if (!connected_mins.empty()) {
+                    std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
+                }
                 SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
                 std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
                 const char* lmax_char = lmax_str.c_str();
@@ -566,7 +572,9 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
                 INTEGER(local_minima)[min_idx] = lmin;
                 const auto& connected_maxs = lmin_to_lmax_map[lmin];
                 SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
-                std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
+                if (!connected_maxs.empty()) {
+                    std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
+                }
                 SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
                 std::string lmin_str = std::to_string(lmin + 1);  // Turning lmin into const char*
                 const char* lmin_char = lmin_str.c_str();
@@ -636,7 +644,9 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
 
             // Create vertex set
             SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
-            std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
+            if (!vertices.empty()) {
+                std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
+            }
             SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
 
             // Create cells list for this pro-cell
@@ -645,8 +655,10 @@ SEXP S_graph_MS_cx_with_path_search(SEXP s_graph, SEXP s_core_graph, SEXP s_Ey) 
 
             for (size_t i = 0; i < cell_components.size(); ++i) {
                 SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
-                std::copy(cell_components[i].begin(), cell_components[i].end(),
-                          INTEGER(component));
+                if (!cell_components[i].empty()) {
+                    std::copy(cell_components[i].begin(), cell_components[i].end(),
+                              INTEGER(component));
+                }
                 SET_VECTOR_ELT(components_list, i, component);
                 UNPROTECT(1);
             }
@@ -941,9 +953,13 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
                 SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
                 int* trajectory_ptr = INTEGER(trajectory);
 
-                std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
-                std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
-                          trajectory_ptr + descending_trajectory.size());
+                if (!descending_trajectory.empty()) {
+                    std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
+                }
+                if (!ascending_trajectory.empty()) {
+                    std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
+                              trajectory_ptr + descending_trajectory.size());
+                }
 
                 SET_VECTOR_ELT(trajectories, vertex, trajectory);
                 UNPROTECT(1);
@@ -985,7 +1001,9 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
 
                 const auto& connected_mins = lmax_to_lmin_map[lmax];
                 SEXP mins = PROTECT(Rf_allocVector(INTSXP, connected_mins.size()));
-                std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
+                if (!connected_mins.empty()) {
+                    std::copy(connected_mins.begin(), connected_mins.end(), INTEGER(mins));
+                }
                 SET_VECTOR_ELT(lmax_to_lmin, max_idx, mins);
                 std::string lmax_str = std::to_string(lmax + 1);  // Turning lmax into const char* after turning it into 1-base interger
                 const char* lmax_char = lmax_str.c_str();
@@ -1013,7 +1031,9 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
 
                 const auto& connected_maxs = lmin_to_lmax_map[lmin];
                 SEXP maxs = PROTECT(Rf_allocVector(INTSXP, connected_maxs.size()));
-                std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
+                if (!connected_maxs.empty()) {
+                    std::copy(connected_maxs.begin(), connected_maxs.end(), INTEGER(maxs));
+                }
                 SET_VECTOR_ELT(lmin_to_lmax, min_idx, maxs);
                 UNPROTECT(1);
 
@@ -1090,7 +1110,9 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
             // Create vertex set
             {
                 SEXP vertex_set = PROTECT(Rf_allocVector(INTSXP, vertices.size()));
-                std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
+                if (!vertices.empty()) {
+                    std::copy(vertices.begin(), vertices.end(), INTEGER(vertex_set));
+                }
                 SET_VECTOR_ELT(procells, pcell_idx, vertex_set);
                 UNPROTECT(1); // vertex_set
             }
@@ -1103,8 +1125,10 @@ SEXP S_graph_MS_cx_using_short_h_hops(SEXP s_graph,
 
                 for (size_t i = 0; i < cell_components.size(); ++i) {
                     SEXP component = PROTECT(Rf_allocVector(INTSXP, cell_components[i].size()));
-                    std::copy(cell_components[i].begin(), cell_components[i].end(),
-                              INTEGER(component));
+                    if (!cell_components[i].empty()) {
+                        std::copy(cell_components[i].begin(), cell_components[i].end(),
+                                  INTEGER(component));
+                    }
                     SET_VECTOR_ELT(components_list, i, component);
                     UNPROTECT(1);
                 }
@@ -1228,9 +1252,13 @@ SEXP S_graph_constrained_gradient_flow_trajectories(SEXP s_graph, SEXP s_core_gr
             SEXP trajectory = PROTECT(Rf_allocVector(INTSXP, tr_size));
             int* trajectory_ptr = INTEGER(trajectory);
 
-            std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
-            std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
-                     trajectory_ptr + descending_trajectory.size());
+            if (!descending_trajectory.empty()) {
+                std::copy(descending_trajectory.rbegin(), descending_trajectory.rend(), trajectory_ptr);
+            }
+            if (!ascending_trajectory.empty()) {
+                std::copy(ascending_trajectory.begin(), ascending_trajectory.end(),
+                         trajectory_ptr + descending_trajectory.size());
+            }
 
             SET_VECTOR_ELT(trajectories, vertex, trajectory);
             UNPROTECT(1);

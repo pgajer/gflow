@@ -7,7 +7,10 @@
 #   - Initial Laplacian assembly
 
 
-source("/Users/pgajer/current_projects/gflow/tests/manual/00-setup.R")
+# Run from the gflow package root.
+source("tests/manual/00-setup.R")
+manual.output <- Sys.getenv("GFLOW_MANUAL_OUTPUT", unset = tempdir())
+dir.create(manual.output, recursive = TRUE, showWarnings = FALSE)
 
 cat("=" , rep("=", 70), "\n", sep = "")
 cat("TEST STAGE 0: INITIALIZATION\n")
@@ -21,7 +24,7 @@ cat("\nTest data: n =", nrow(test.data$X), "\n")
 plot.test.data(test.data)
 
 timestamp <- generate.timestamp()
-file <- "~/current_projects/gflow/tests/manual/pics/"
+file <- paste0(manual.output, "/")
 (file <- paste0(file, timestamp, ".pdf"))
 pdf(file, width=12, height=6)
 op <- par(mar=c(3.5,3.5,1.5,0.5), mgp=c(2.0,0.4,0),tcl = -0.3)
@@ -29,7 +32,7 @@ plot.test.data(test.data)
 par(op)
 dev.off()
 system(paste0("open ",file))
-## "~/current_projects/gflow/tests/manual/pics/2025_10_07_175445.pdf"
+## Output snapshot: 2025_10_07_175445.pdf
 
 # Run initialization only (test_stage = 0)
 cat("\nRunning fit_riem_dcx_regression with test_stage = 0...\n")
@@ -53,7 +56,7 @@ points(test.data$X[,1], test.data$y)
 lines(test.data$X[,1], rdcx.res$fitted.values, col = "red")
 
 timestamp <- generate.timestamp()
-file <- "~/current_projects/gflow/tests/manual/pics/"
+file <- paste0(manual.output, "/")
 (file <- paste0(file, timestamp, ".pdf"))
 pdf(file, width=6, height=6)
 op <- par(mar=c(2.25,2.25,0.5,0.5), mgp=c(2.0,0.4,0),tcl = -0.3)
@@ -63,7 +66,7 @@ lines(test.data$X[,1], rdcx.res$fitted.values, col = "red")
 par(op)
 dev.off()
 system(paste0("open ",file))
-## "~/current_projects/gflow/tests/manual/pics/2025_10_07_180302.pdf"
+## Output snapshot: 2025_10_07_180302.pdf
 
 
 dcx.res <- fit.knn.riem.graph.regression(
@@ -90,7 +93,7 @@ points(test.data$X[,1], test.data$y)
 lines(test.data$X[,1], dcx.res$fitted.values, col = "red")
 
 timestamp <- generate.timestamp()
-file <- "~/current_projects/gflow/tests/manual/pics/10itrs_"
+file <- paste0(manual.output, "/10itrs_")
 (file <- paste0(file, timestamp, ".pdf"))
 pdf(file, width=6, height=6)
 op <- par(mar=c(2.25,2.25,0.5,0.5), mgp=c(2.0,0.4,0),tcl = -0.3)
@@ -100,7 +103,7 @@ lines(test.data$X[,1], dcx.res$fitted.values, col = "red")
 par(op)
 dev.off()
 system(paste0("open ",file))
-## "~/current_projects/gflow/tests/manual/pics/10itrs_2025_10_07_181659.pdf"
+## Output snapshot: 10itrs_2025_10_07_181659.pdf
 
 dcx.res <- fit.knn.riem.graph.regression(
     test.data$X,
@@ -126,7 +129,7 @@ points(test.data$X[,1], test.data$y)
 lines(test.data$X[,1], dcx.res$fitted.values, col = "red")
 
 timestamp <- generate.timestamp()
-file <- "~/current_projects/gflow/tests/manual/pics/50itrs_"
+file <- paste0(manual.output, "/50itrs_")
 (file <- paste0(file, timestamp, ".pdf"))
 pdf(file, width=6, height=6)
 op <- par(mar=c(2.25,2.25,0.5,0.5), mgp=c(2.0,0.4,0),tcl = -0.3)
@@ -136,7 +139,7 @@ lines(test.data$X[,1], dcx.res$fitted.values, col = "red")
 par(op)
 dev.off()
 system(paste0("open ",file))
-## "~/current_projects/gflow/tests/manual/pics/50itrs_2025_10_07_181824.pdf"
+## Output snapshot: 50itrs_2025_10_07_181824.pdf
 
 
 

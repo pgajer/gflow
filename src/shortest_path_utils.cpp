@@ -472,7 +472,7 @@ double set_wgraph_t::find_minimum_bandwidth(
 		// For DEBUGGING only !!!
 		//
 		// print_uset(paths.reachable_vertices, "reachable_vertices");
-		std::string debug_dir = "/Users/pgajer/current_projects/msr2/debugging_data/";
+		std::string debug_dir = (std::filesystem::temp_directory_path() / "gflow-debug").string() + "/";
 
 		if (!std::filesystem::exists(debug_dir)) {
 			if (!std::filesystem::create_directories(debug_dir)) {

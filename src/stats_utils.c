@@ -1374,18 +1374,6 @@ SEXP S_lwcor( SEXP Snn_i, SEXP Snn_w , SEXP SY)
           #if DEBUG_S_LWCOR
           Rprintf("i=%d j=%d ig=%d ipair=%d lcor=%.5f\n", i, j, ig, ipair, *(ans + ig + ipair*ng));
 
-          char *file = "/Users/pgajer/projects/rllm/data-debugging/S_lwcor/y1.csv";
-          write_double_array(y1, k, file);
-          Rprintf("S_lwcor() created %s\n", file);
-
-          file = "/Users/pgajer/projects/rllm/data-debugging/S_lwcor/y2.csv";
-          write_double_array(y2, k, file);
-          Rprintf("S_lwcor() created %s\n", file);
-
-          file = "/Users/pgajer/projects/rllm/data-debugging/S_lwcor/w.csv";
-          write_double_array(w, k, file);
-          Rprintf("S_lwcor() created %s\n", file);
-
           Rf_error("STOP");
           #endif
 
@@ -1473,18 +1461,6 @@ SEXP S_lwcor_yY( SEXP Snn_i, SEXP Snn_w , SEXP SY, SEXP Sy )
 
         #if DEBUG_S_LWCOR_YY
         Rprintf("i=%d j=%d ig=%d lcor=%.5f\n", i, j, ig, *(res + ig + i*ng));
-
-        char *file = "/Users/pgajer/projects/rllm/data-debugging/S_lwcor/y1.csv";
-        write_double_array(y1, k, file);
-        Rprintf("S_lwcor() created %s\n", file);
-
-        file = "/Users/pgajer/projects/rllm/data-debugging/S_lwcor/y2.csv";
-        write_double_array(y2, k, file);
-        Rprintf("S_lwcor() created %s\n", file);
-
-        file = "/Users/pgajer/projects/rllm/data-debugging/S_lwcor/w.csv";
-        write_double_array(w, k, file);
-        Rprintf("S_lwcor() created %s\n", file);
 
         Rf_error("STOP");
         #endif

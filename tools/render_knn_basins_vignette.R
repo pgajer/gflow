@@ -16,17 +16,8 @@ saveRDS(identity, file.path(out, "build-identity.rds"))
 environment <- new.env(parent = globalenv())
 environment$knn_artifact_dir <- out
 environment$knn_build_identity <- identity
-# Reuse the reviewed experiment only for this exact implementation/runtime.
-# Each cached input and setting is checked again inside the vignette. Normal
-# source-package builds have no archive and compute the experiment themselves.
-archive <- file.path(root, "build", "knn-synthetic-modes-2026-11-06")
-archive_identity <- file.path(archive, "build-identity.rds")
-if (file.exists(archive_identity) &&
-    identical(readRDS(archive_identity)$build.id, identity$build.id) &&
-    all(file.exists(file.path(archive, "cases", sprintf("%02d.rds", 1:64))))) {
-    environment$knn_synthetic_archive <- archive
-    message("Reusing build-validated synthetic fits; recomputing scores and minimum checks.")
-}
+# This source preview recomputes all comparisons against the loaded implementation.
+options(gflow.recompute.vignettes = TRUE)
 result <- rmarkdown::render(
     file.path(root, "vignettes", "knn-basins.Rmd"),
     output_dir = out, intermediates_dir = file.path(out, "intermediates"),
@@ -51,5 +42,5 @@ saveRDS(list(one = environment$one, noisy = environment$noisy,
              synthetic.comparison = environment$synthetic_cases,
              density = environment$density_control,
              sensitivity = environment$sensitivity_fits),
-        file.path(out, "reviewed-results.rds"))
+        file.path(out, "vignette-results.rds"))
 cat("\nRendered and numerically verified:", result, "\n")

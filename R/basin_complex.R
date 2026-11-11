@@ -1,4 +1,4 @@
-# Canonical basin-complex schema and Phase B constructor.
+# Canonical basin-complex schema and constructor.
 
 .basin.complex.methods <- c(
     "trajectory_flow",
@@ -35,7 +35,7 @@
         method
     )
     equivalence.note <- if (equivalent) {
-        "The reviewed functionality is available through the canonical method."
+        "This functionality is available through the canonical method."
     } else {
         "No exact canonical equivalent is claimed for every legacy argument combination."
     }
@@ -1755,7 +1755,7 @@ create.basin.complex <- function(
         parameters = parameters,
         condition.class = "gflow_basin_backend_not_implemented",
         message = sprintf(
-            "The canonical '%s' backend is not implemented in Phase B.",
+            "The canonical '%s' backend is not implemented.",
             method
         )
     )

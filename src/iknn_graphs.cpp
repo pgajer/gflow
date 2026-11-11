@@ -1649,7 +1649,9 @@ SEXP S_create_single_iknn_graph(SEXP s_X,
             Rf_error("Connected component vector too large for int lengths.");
         }
         SEXP s_conn_comps = PROTECT(Rf_allocVector(INTSXP, static_cast<R_len_t>(conn_comps.size())));
-        std::copy(conn_comps.begin(), conn_comps.end(), INTEGER(s_conn_comps));
+        if (!conn_comps.empty()) {
+            std::copy(conn_comps.begin(), conn_comps.end(), INTEGER(s_conn_comps));
+        }
 
         SET_VECTOR_ELT(r_result, 0, adj_list);
         SET_VECTOR_ELT(r_result, 1, intersection_size_list);

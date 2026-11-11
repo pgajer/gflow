@@ -1213,9 +1213,15 @@ SEXP S_get_path_data(
         SEXP y_path = PROTECT(Rf_allocVector(REALSXP, paths[i].y_path.size()));
 
         // Copy vector data
-        std::copy(paths[i].x_path.begin(), paths[i].x_path.end(), REAL(x_path));
-        std::copy(paths[i].w_path.begin(), paths[i].w_path.end(), REAL(w_path));
-        std::copy(paths[i].y_path.begin(), paths[i].y_path.end(), REAL(y_path));
+        if (!paths[i].x_path.empty()) {
+            std::copy(paths[i].x_path.begin(), paths[i].x_path.end(), REAL(x_path));
+        }
+        if (!paths[i].w_path.empty()) {
+            std::copy(paths[i].w_path.begin(), paths[i].w_path.end(), REAL(w_path));
+        }
+        if (!paths[i].y_path.empty()) {
+            std::copy(paths[i].y_path.begin(), paths[i].y_path.end(), REAL(y_path));
+        }
 
         // Set list elements
         SET_VECTOR_ELT(path, 0, vertices);
@@ -2632,9 +2638,15 @@ SEXP S_ugg_get_path_data(
         SEXP y_path = PROTECT(Rf_allocVector(REALSXP, paths[i].y_path.size()));
 
         // Copy vector data
-        std::copy(paths[i].x_path.begin(), paths[i].x_path.end(), REAL(x_path));
-        std::copy(paths[i].w_path.begin(), paths[i].w_path.end(), REAL(w_path));
-        std::copy(paths[i].y_path.begin(), paths[i].y_path.end(), REAL(y_path));
+        if (!paths[i].x_path.empty()) {
+            std::copy(paths[i].x_path.begin(), paths[i].x_path.end(), REAL(x_path));
+        }
+        if (!paths[i].w_path.empty()) {
+            std::copy(paths[i].w_path.begin(), paths[i].w_path.end(), REAL(w_path));
+        }
+        if (!paths[i].y_path.empty()) {
+            std::copy(paths[i].y_path.begin(), paths[i].y_path.end(), REAL(y_path));
+        }
 
         // Set list elements
         SET_VECTOR_ELT(path, 0, vertices);

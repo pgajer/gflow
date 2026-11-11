@@ -19,12 +19,15 @@ and numerical kernels remain in place; generated bindings are not editing target
 The phase-named tests retain their filenames; their descriptive `test_that()`
 names identify the scientific contracts. Search by subject before adding tests.
 
+For the geometry of path neighborhoods, see
+[graph corridor constructions](corridor-algorithms.md).
+
 ## Generated files and ownership
 
 Edit roxygen in `R/`, then run `make document` to regenerate `NAMESPACE`, Rd and
 catalog links. `tools/update_guide_links.R` resolves help aliases, including aliases
 that share a topic. `make build` also refreshes the source manifest and includes all
-four rendered guides. `make audit-api-guide audit-final-acceptance` checks catalog,
+five rendered guides. `make audit-api-guide audit-final-acceptance` checks catalog,
 namespace and ownership. Run `make check` for the full package check.
 
 - [API ownership](../split_audit/cleanup/api-ownership.csv)
@@ -32,10 +35,7 @@ namespace and ownership. Run `make check` for the full package check.
 - [Dependency ownership](../split_audit/cleanup/dependency-ownership.csv)
 - [Protected basin surface](../split_audit/cleanup/protected-basin-surface.txt)
 
-When present in a working checkout, `DOCUMENT_LOCATIONS.md` records local
-document-location policy; private review evidence is kept outside the package.
-
-When an authorized basin change alters protected fingerprints, regenerate with
+When a basin implementation change alters protected fingerprints, regenerate with
 `cleanup.build.protected.surface()` from `tools/cleanup_ledger_lib.R`, inspect the
 exact changed entries, and commit the record with the source change. Do not
 weaken the guardrail to make a check pass. Generic graph algorithms belong to
@@ -82,7 +82,7 @@ permutation calls, but a single large native call may finish before cancellation
 This is a documented current limit, not a claimed responsiveness benchmark.
 
 Do not insert R API calls into OpenMP worker loops. Adding native interruption
-requires an exception-safe boundary and main-thread polling design; this review
-preserves the existing kernels and provides bounded pair execution instead.
+requires an exception-safe boundary and main-thread polling design. The current
+kernels provide bounded pair execution without in-loop interruption.
 A stopped block sequence is incomplete: consumers must check the saved completed
 pair indices against the requested list before reporting a complete analysis.

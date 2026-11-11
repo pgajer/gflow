@@ -1,19 +1,9 @@
-## Submission draft
+## gflow 0.2.0
 
-This draft concerns gflow 0.2.0 and is not ready for submission. The package
-focuses on basin, trajectory and gradient-flow analysis and local/flow-aware
-association methods. Generic graph functionality is supplied by dgraphs;
-retired interfaces and supported replacements are documented in the migration
-guide and NEWS.
+Resubmission following the earlier 0.1.0 attempts. The Linux loading issue is resolved: gflow has no TBB dependency and uses published dgraphs (>= 0.4.0).
 
-## Validation required
+Repeated vignette fits are precomputed with full reproduction code. Scientific results, examples and figures are retained.
 
-The current source still needs a final source-archive check and current
-Windows, Linux and oldest-supported-R evidence. Earlier local checks do not
-establish readiness of the current source. Final error, warning and note counts
-remain to be recorded here.
+The rebuilt archive passes macOS R-devel with 0 errors, 0 warnings and the expected "New submission" NOTE. Win-builder R-devel stopped at dependency screening because the available dgraphs version is unsuitable. CRAN currently lists dgraphs 0.2.0 for Windows R-devel, below gflow's required 0.4.0. The fresh R-release check is still in progress.
 
-Validate the dependency minimums against released dgraphs and ivue, and check
-the supported downstream integrations. Existing archived-object requirements
-for gfcor() and gfassoc.membership() are documented in their guides.
-The submission type must agree with the maintainer's CRAN correspondence.
+The archive is 8,729,136 bytes; documentation totals 4,956,159 bytes and data 1,762,765 bytes. Earlier Windows passes apply to the preceding archive.

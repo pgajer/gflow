@@ -352,7 +352,7 @@ test_that("seeded trajectory tie breaking is local and reproducible", {
     expect_true(first$field$tie.policy$applied)
 })
 
-test_that("Phase C keeps absent mass distinct from zero-mass vertices", {
+test_that("absent mass remains distinct from zero-mass vertices", {
     fixture <- phase.c.path.fixture()
     no.mass <- create.basin.complex(
         fixture$adj.list,
@@ -380,7 +380,7 @@ test_that("Phase C keeps absent mass distinct from zero-mass vertices", {
     )
 })
 
-test_that("successful-object validation enforces Phase C invariants", {
+test_that("successful-object validation enforces assignment and membership invariants", {
     fixture <- phase.c.path.fixture()
     object <- create.basin.complex(
         fixture$adj.list,

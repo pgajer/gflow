@@ -293,7 +293,9 @@ SEXP S_loc_const_vertices(SEXP r_adj_list, SEXP Ry, SEXP Rprec) {
 
     const int nres = (int)locs->size(); // safe under LENGTH-first
     SEXP result = PROTECT(Rf_allocVector(INTSXP, nres));
-    std::copy(locs->begin(), locs->end(), INTEGER(result));
+    if (!locs->empty()) {
+        std::copy(locs->begin(), locs->end(), INTEGER(result));
+    }
 
     UNPROTECT(1);
     return result;
@@ -631,7 +633,9 @@ SEXP S_make_response_locally_non_const(SEXP r_adj_list,
     double* result_ptr = REAL(result);
     for (size_t i = 0; i < n_iterations; ++i) {
         const std::vector<double>& col = (*y_traj)[(size_t)i];
-        std::copy(col.begin(), col.end(), result_ptr + i * n_vertices);
+        if (!col.empty()) {
+            std::copy(col.begin(), col.end(), result_ptr + i * n_vertices);
+        }
     }
 
     UNPROTECT(1); // result

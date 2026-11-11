@@ -1,5 +1,5 @@
 ---
-title: "Noisy Circle CV Denoising: Phase 3 (High-Dimensional Stress Test)"
+title: "Noisy Circle CV Denoising: High-Dimensional Stress Test"
 author: "gflow experiment log"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
 output:
@@ -108,11 +108,11 @@ Rscript tests/manual/denoising_noisy_circle_cv_phase3_highdim.R --mode=full --ru
 Analyze:
 
 ```bash
-Rscript tests/manual/analyze_noisy_circle_cv_phase3_run.R --run_dir=/Users/pgajer/current_projects/gflow/tests/manual/results/noisy_circle_cv_phase3_highdim/phase3_highdim_pilot --snapshot_tag=final
+Rscript tests/manual/analyze_noisy_circle_cv_phase3_run.R --run_dir="$RESULT_DIR" --snapshot_tag=final
 ```
 
 Render report:
 
 ```bash
-Rscript -e "rmarkdown::render('tests/manual/noisy_circle_cv_phase3_results_template.Rmd', output_file='noisy_circle_cv_phase3_results_final.html', output_dir='/Users/pgajer/current_projects/gflow/tests/manual/results/noisy_circle_cv_phase3_highdim/phase3_highdim_pilot/analysis')"
+Rscript -e "rmarkdown::render('tests/manual/noisy_circle_cv_phase3_results_template.Rmd', output_file='noisy_circle_cv_phase3_results_final.html', output_dir=file.path(Sys.getenv('RESULT_DIR'), 'analysis'), params=list(run_dir=Sys.getenv('RESULT_DIR')))"
 ```

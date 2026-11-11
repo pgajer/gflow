@@ -47,7 +47,7 @@ test_that("breaking release exposes only the maintained non-protected API", {
     ))
 })
 
-test_that("retired Phase 8 families are absent from the namespace", {
+test_that("retired function families are absent from the namespace", {
     retired <- c(
         "cluster.graph.louvain",
         "congruence.with.labels",

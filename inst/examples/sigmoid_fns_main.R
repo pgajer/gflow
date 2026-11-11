@@ -1,4 +1,5 @@
-source("~/current_projects/gflow/inst/examples/sigmoid_fns.R")
+# Run from the gflow package root.
+source("inst/examples/sigmoid_fns.R")
 
 ## Generate the 3x3 comparison figure
 plot.sigmoid.comparison(

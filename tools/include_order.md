@@ -1,11 +1,16 @@
-# There isn’t a single “law,” but for C++ code in R packages a sane, low-drama include order is:
+# Header include order
 
-1. **This file’s own header** (if any) — catches missing prerequisites early.
-2. **C/C++ standard library headers** — e.g. `<cstddef>`, `<vector>`, `<algorithm>`, `<map>`, `<string>`, `<fstream>`, `<cmath>`, etc.
-3. **Third-party C++ headers** — e.g. Eigen.
-4. **R C API headers** — `R.h` → `Rinternals.h` → extras like `R_ext/Print.h`; wrap in `extern "C"`.
+For gflow-owned C++ sources, use this order:
 
-Applied to your snippet:
+1. The source file's own header, where applicable, to check that it is self-contained.
+2. Required C and C++ standard-library headers.
+3. Third-party C++ headers, such as Eigen.
+4. R C API headers, with `R.h` before `Rinternals.h`.
+
+Place the OpenMP compatibility header before any header that can include
+`omp.h`; see [OpenMP header placement](omp_compat_placement.md).
+
+A header that uses standard containers, Eigen and the R C API can use:
 
 ```cpp
 #pragma once
@@ -39,18 +44,11 @@ extern "C" {
 using std::size_t;     // if you keep this pattern; otherwise prefer std::size_t in headers
 ```
 
-### Why this order?
+Including R headers after template-heavy libraries limits macro collisions;
+`R_NO_REMAP` additionally suppresses R's compatibility remapping macros.
+The example uses explicit C linkage for the R API declarations.
 
-* **Self-contained headers:** Including your own header first (in a .cpp) ensures it compiles with only what it includes.
-* **Reduce macro collisions:** Keeping R headers **last** minimizes macro pollution affecting template-heavy libs. With `-DR_NO_REMAP` you’re mostly safe either way, but this order avoids surprises.
-* **C linkage:** R’s headers declare C functions; the `extern "C"` block ensures correct linkage in C++ (R headers handle this on many platforms, but wrapping is harmless and explicit).
-
-### A few extra tips
-
-* Put `using std::size_t;` **after** `<cstddef>`. Never before.
-* In **public headers**, many teams avoid any `using` and write `std::size_t` explicitly. If changing all uses is too much right now, your narrow `using std::size_t;` is acceptable—just keep it to headers you control and avoid `using namespace std;`.
-* Only include what you use; don’t pull in heavy headers (e.g., `<Eigen/Dense>`) from widely included headers if a forward-decl or a slimmer Eigen header would do (Eigen is header-only, so forward-decls are limited, but you can prefer `<Eigen/Core>` when you don’t need factorizations).
-
-If you want, paste one of your headers and I’ll reorganize it to this pattern with minimal edits.
-
-
+Include `<cstddef>` before referring to `std::size_t`. Prefer qualified names
+in public headers and avoid `using namespace std`. Include only the headers
+needed by the declarations or implementation; for example, use `Eigen/Core`
+when decomposition facilities from `Eigen/Dense` are unnecessary.

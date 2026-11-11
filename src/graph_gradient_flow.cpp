@@ -13,7 +13,7 @@
 #include <functional>
 #include <map>
 #include <vector>
-// #include <filesystem>  // for debugging
+#include <filesystem>  // diagnostic output directory
 
 #include <R.h>
 #include <Rinternals.h>
@@ -691,7 +691,7 @@ gradient_trajectory_t set_wgraph_t::construct_trajectory(
 
 #if DEBUG__construct_trajectory
     // debugging/testing - saving to file
-    std::string debug_dir = "/Users/pgajer/current_projects/msr2/debugging_data/";
+    std::string debug_dir = (std::filesystem::temp_directory_path() / "gflow-debug").string() + "/";
     if (!std::filesystem::exists(debug_dir)) {
         if (!std::filesystem::create_directories(debug_dir)) {
             REPORT_ERROR("ERROR: Failed to create debug directory: %s\n", debug_dir.c_str());
